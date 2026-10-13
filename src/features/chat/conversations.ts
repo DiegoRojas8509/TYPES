@@ -3,6 +3,7 @@
 // updating A while Diego looks at B.
 import { create } from "zustand";
 import { api, errorMessage, isApiError, onClaudeEvent, type ClaudeEvent, type UnlistenFn } from "../../lib/api";
+import { getModel } from "../../lib/model";
 import { useApp } from "../../store/app";
 import {
   type ChatAction,
@@ -145,7 +146,7 @@ export const useChats = create<ChatsState>()((set, get) => ({
     try {
       await ensureListening();
       const sessionId = get().conversations[space]?.sessionId ?? null;
-      const runId = await api.claudeSend(space, text, forAgent, sessionId);
+      const runId = await api.claudeSend(space, text, forAgent, sessionId, getModel());
       bindRun(runId, space);
       set({ claudeMissing: false });
       if (get().conversations[space]?.stopRequested) void api.claudeStop(runId).catch(() => {});

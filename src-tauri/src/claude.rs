@@ -73,7 +73,7 @@ pub fn shell_lookup() -> Option<PathBuf> {
 
 /// The prompt is passed after `--` so it can never be taken for an option value
 /// (`--allowedTools` is variadic) or for a flag when the text starts with `-`.
-pub fn build_args(text: &str, attachments: &[String], session_id: Option<&str>) -> Vec<String> {
+pub fn build_args(text: &str, attachments: &[String], session_id: Option<&str>, model: Option<&str>) -> Vec<String> {
     let mut prompt = text.to_string();
     if !attachments.is_empty() {
         prompt.push_str("\n\nArchivos adjuntos (léelos con Read):");
@@ -96,6 +96,11 @@ pub fn build_args(text: &str, attachments: &[String], session_id: Option<&str>) 
     .iter()
     .map(|s| s.to_string())
     .collect();
+    // Alias (`opus`, `sonnet`, `haiku`) or full id; anything odd is ignored so it can't act as a flag.
+    if let Some(m) = model.filter(|m| !m.is_empty() && !m.starts_with('-') && m.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_' | '[' | ']'))) {
+        args.push("--model".into());
+        args.push(m.into());
+    }
     if let Some(id) = session_id {
         args.push("--resume".into());
         args.push(id.into());
@@ -217,13 +222,14 @@ pub fn claude_send(
     text: String,
     attachments: Vec<String>,
     session_id: Option<String>,
+    model: Option<String>,
 ) -> Result<u32> {
     let cwd = workspace::resolve(&state.root(), &space)?;
     if !cwd.is_dir() {
         return Err(AppError::Invalid("el espacio no es una carpeta".into()));
     }
     let bin = locate(&state.snapshot()).ok_or_else(claude_not_found)?;
-    let args = build_args(&text, &attachments, session_id.as_deref());
+    let args = build_args(&text, &attachments, session_id.as_deref(), model.as_deref());
     let mut child = Command::new(&bin)
         .args(&args)
         .current_dir(&cwd)
@@ -343,7 +349,7 @@ mod tests {
 
     #[test]
     fn build_args_has_required_flags_and_no_bash() {
-        let a = build_args("Responde solo: ok", &[], None);
+        let a = build_args("Responde solo: ok", &[], None, None);
         assert_eq!(a.first().map(String::as_str), Some("-p"));
         for f in ["--output-format", "stream-json", "--verbose", "--include-partial-messages", "--permission-mode", "acceptEdits", "--allowedTools"] {
             assert!(a.iter().any(|x| x == f), "missing {f}");
@@ -358,8 +364,19 @@ mod tests {
     }
 
     #[test]
+    fn build_args_adds_model_only_when_safe() {
+        let a = build_args("hola", &[], None, Some("opus"));
+        let i = a.iter().position(|x| x == "--model").expect("--model");
+        assert_eq!(a[i + 1], "opus");
+        for bad in ["", "--version", "a b", "x;y"] {
+            assert!(!build_args("hola", &[], None, Some(bad)).iter().any(|x| x == "--model"), "{bad}");
+        }
+        assert!(!build_args("hola", &[], None, None).iter().any(|x| x == "--model"));
+    }
+
+    #[test]
     fn build_args_adds_resume() {
-        let a = build_args("hola", &[], Some("abc-123"));
+        let a = build_args("hola", &[], Some("abc-123"), None);
         let i = a.iter().position(|x| x == "--resume").unwrap();
         assert_eq!(a[i + 1], "abc-123");
         assert!(i < a.iter().position(|x| x == "--").unwrap());
@@ -367,7 +384,7 @@ mod tests {
 
     #[test]
     fn build_args_lists_attachments() {
-        let a = build_args("mira", &["Ropa/adjuntos/a b.png".into(), "Ropa/adjuntos/c.png".into()], None);
+        let a = build_args("mira", &["Ropa/adjuntos/a b.png".into(), "Ropa/adjuntos/c.png".into()], None, None);
         assert_eq!(
             a.last().unwrap(),
             "mira\n\nArchivos adjuntos (léelos con Read):\n- Ropa/adjuntos/a b.png\n- Ropa/adjuntos/c.png"
@@ -376,7 +393,7 @@ mod tests {
 
     #[test]
     fn build_args_prompt_starting_with_dash_is_safe() {
-        let a = build_args("--version", &[], None);
+        let a = build_args("--version", &[], None, None);
         assert_eq!(&a[a.len() - 2..], ["--", "--version"]);
     }
 

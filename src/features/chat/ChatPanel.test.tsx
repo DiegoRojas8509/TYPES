@@ -93,6 +93,15 @@ describe("ChatPanel", () => {
     expect(screen.getByLabelText("Mensaje para Claude")).toBeEnabled();
   });
 
+  it("sends the model picked in the selector", async () => {
+    render(<ChatPanel />);
+    fireEvent.change(screen.getByLabelText("Modelo de Claude"), { target: { value: "opus" } });
+    await type("hola");
+    fireEvent.keyDown(screen.getByLabelText("Mensaje para Claude"), { key: "Enter" });
+    await waitFor(() => expect(mocked.claudeSend).toHaveBeenCalledWith("Ropa", "hola", [], null, "opus"));
+    localStorage.removeItem("types.model");
+  });
+
   it("Enter sends, Shift+Enter does not, and send is disabled while empty", async () => {
     render(<ChatPanel />);
     const box = screen.getByLabelText("Mensaje para Claude");
@@ -105,7 +114,7 @@ describe("ChatPanel", () => {
     fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
     expect(mocked.claudeSend).not.toHaveBeenCalled();
     fireEvent.keyDown(box, { key: "Enter" });
-    await waitFor(() => expect(mocked.claudeSend).toHaveBeenCalledWith("Ropa", "costea la tela", [], null));
+    await waitFor(() => expect(mocked.claudeSend).toHaveBeenCalledWith("Ropa", "costea la tela", [], null, ""));
     expect(await screen.findByText("costea la tela")).toBeInTheDocument();
     expect(box).toHaveValue("");
   });
@@ -141,7 +150,7 @@ describe("ChatPanel", () => {
     mocked.claudeSend.mockResolvedValue(2);
     await type("otra cosa");
     fireEvent.click(screen.getByRole("button", { name: "Enviar" }));
-    await waitFor(() => expect(mocked.claudeSend).toHaveBeenLastCalledWith("Ropa", "otra cosa", [], "sess-1"));
+    await waitFor(() => expect(mocked.claudeSend).toHaveBeenLastCalledWith("Ropa", "otra cosa", [], "sess-1", ""));
   });
 
   it("does not render raw HTML from the assistant", async () => {
@@ -241,7 +250,7 @@ describe("ChatPanel", () => {
     expect(screen.getByRole("button", { name: "Enviar" })).toBeEnabled(); // attachments alone are enough
     await type("mira esta tela");
     fireEvent.click(screen.getByRole("button", { name: "Enviar" }));
-    await waitFor(() => expect(mocked.claudeSend).toHaveBeenCalledWith("Ropa", "mira esta tela", ["adjuntos/foto.png"], null));
+    await waitFor(() => expect(mocked.claudeSend).toHaveBeenCalledWith("Ropa", "mira esta tela", ["adjuntos/foto.png"], null, ""));
     expect(mocked.saveAttachment).toHaveBeenCalledWith("Ropa", "foto.png", expect.any(Uint8Array));
     // the transcript chip opens the workspace-relative path
     fireEvent.click(await screen.findByTitle("Abrir Ropa/adjuntos/foto.png"));

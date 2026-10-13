@@ -1,4 +1,5 @@
 import { useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from "react";
+import { getModel, MODELS, setModel } from "../../lib/model";
 import type { PendingImage } from "./conversations";
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
@@ -27,6 +28,7 @@ export function Composer({ running, onSend, onStop }: Props) {
   const [chips, setChips] = useState<Chip[]>([]);
   const [problem, setProblem] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const [model, setModelState] = useState(getModel);
 
   const canSend = !running && (text.trim().length > 0 || chips.length > 0);
 
@@ -139,6 +141,22 @@ export function Composer({ running, onSend, onStop }: Props) {
             e.target.value = "";
           }}
         />
+        <select
+          className="btn"
+          aria-label="Modelo de Claude"
+          title="Modelo que usará el siguiente mensaje"
+          value={model}
+          onChange={(e) => {
+            setModelState(e.target.value);
+            setModel(e.target.value);
+          }}
+        >
+          {MODELS.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.label}
+            </option>
+          ))}
+        </select>
         {running ? (
           <button className="btn" type="button" onClick={onStop}>
             Detener

@@ -81,8 +81,8 @@ export const api = {
 
   claudeStatus: () => invoke<ClaudeStatus>("claude_status"),
   /** Resolves with the run id used by `claude-event`. */
-  claudeSend: (space: string, text: string, attachments: string[], sessionId: string | null) =>
-    invoke<number>("claude_send", { space, text, attachments, sessionId }),
+  claudeSend: (space: string, text: string, attachments: string[], sessionId: string | null, model: string | null = null) =>
+    invoke<number>("claude_send", { space, text, attachments, sessionId, model: model || null }),
   claudeStop: (runId: number) => invoke<void>("claude_stop", { runId }),
 };
 
