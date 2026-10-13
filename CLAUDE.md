@@ -19,7 +19,7 @@ Para features nuevas usa superpowers (brainstorming → writing-plans → subage
 ## 3. Fases
 | Fase | Contenido | Estado |
 |------|-----------|--------|
-| 1 | Espacios y páginas, editor Markdown, visor de HTML e imágenes, refresco en vivo, panel de chat con Claude | En curso: plan en `docs/superpowers/plans/2026-10-12-types-fase-1.md` |
+| 1 | Espacios y páginas, editor Markdown, visor de HTML e imágenes, refresco en vivo, panel de chat con Claude | Código completo (tareas 1-7, pruebas verdes) y `Types.app` compilada. **Falta la prueba real con la ventana abierta** (plan, Tarea 8 paso 3): ver `docs/superpowers/plans/2026-10-12-types-fase-1.md` |
 | 2 | Tableros tipo Trello (archivos de datos dentro del espacio) | Pendiente |
 | 3 | Exportación (Google Drive y otros destinos) | Pendiente |
 
@@ -81,7 +81,7 @@ pnpm install          # dependencias
 pnpm tauri dev        # app en desarrollo
 pnpm test             # Vitest
 cargo test --manifest-path src-tauri/Cargo.toml
-pnpm tauri build      # .app para abrir desde el Dock
+pnpm tauri build --bundles app   # -> src-tauri/target/release/bundle/macos/Types.app (arrastra al Dock)
 ```
 Entorno: Node solo por nvm (`source ~/.nvm/nvm.sh`), Rust por rustup (`~/.cargo/bin`). Sin Xcode completo: solo Command Line Tools.
 
