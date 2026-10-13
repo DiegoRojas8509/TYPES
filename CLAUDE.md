@@ -30,9 +30,9 @@ Tauri 2 · Rust · React 19 + TypeScript + Vite · pnpm · Zustand (estado) · T
 Antes de usar una librería, confirma su API actual con context7; no programes de memoria.
 
 ### Dónde vive cada cosa
-- **Carpeta física:** `~/Documents/TYPES.nosync` (el sufijo `.nosync` evita que iCloud la suba y permite liberar espacio). `~/Documents/TYPES` es un acceso directo (symlink) hacia ella: usa esa ruta para que la memoria y las herramientas sigan funcionando.
+- **Carpeta física:** `~/Documents/TYPES.nosync` (el sufijo `.nosync` evita que iCloud la suba y permite liberar espacio). `~/Documents/TYPES` NO es un symlink (iCloud lo convirtió en carpeta propia); no lo uses para datos.
 - **Código:** todo el repo salvo `espacios/`.
-- **Carpeta de datos (workspace):** por defecto `~/Documents/TYPES/espacios` (decisión de Diego, 2026-10-13: quiere sus espacios dentro de TYPES), configurable desde la app. Está en `.gitignore`: **son datos de negocio y el repo de GitHub es público, nunca se commitean.**
+- **Carpeta de datos (workspace):** por defecto `~/Documents/TYPES.nosync/espacios` (ruta real, nunca `~/Documents/TYPES`: ahí no hay symlink sino una carpeta de iCloud y los datos se saldrían a la nube; decisión de Diego, 2026-10-13: todo local), configurable desde la app. Está en `.gitignore`: **son datos de negocio y el repo de GitHub es público, nunca se commitean.**
 - **Contrapartida conocida:** Claude Code carga los CLAUDE.md de todas las carpetas padre. El agente que arranca en `espacios/<espacio>` también lee esta guía de desarrollo (regla de modelos, arquitectura). Es ruido, no un fallo. Si estorba, evaluar `claudeMdExcludes` en los ajustes del workspace; confirma primero que ese ajuste existe en la versión instalada.
 
 ### Formato del workspace
@@ -88,8 +88,18 @@ pnpm tauri build --bundles app   # -> src-tauri/target/release/bundle/macos/Type
 Entorno: Node solo por nvm (`source ~/.nvm/nvm.sh`), Rust por rustup (`~/.cargo/bin`). Sin Xcode completo: solo Command Line Tools.
 
 ## 7. Decisiones tomadas por Claude (Diego puede cambiarlas)
-- Workspace dentro del proyecto pero ignorado por git: `~/Documents/TYPES/espacios` (cambio pedido por Diego; antes estaba fuera del repo).
+- Workspace dentro del proyecto pero ignorado por git: `~/Documents/TYPES.nosync/espacios` (cambio pedido por Diego; antes estaba fuera del repo).
 - Tiptap + Markdown como editor.
 - Agente embebido con `acceptEdits` y sin Bash en la fase 1.
 - Un proceso de Claude por mensaje con `--resume`, en lugar de un proceso vivo.
 - Editor (`@tiptap/markdown` 3.x): al primer guardado normaliza la sintaxis (viñetas a `-`, tablas realineadas, sin salto de línea final); no se escribe nada hasta que Diego edita. Las páginas con YAML, comentarios HTML, bloques HTML o notas al pie se abren en solo lectura porque el editor las corrompería (Diego puede forzar la edición). Imágenes en disco: ruta relativa a la carpeta de la página (`adjuntos/a.png`, o `../adjuntos/a.png` en subcarpetas).
+
+## graphify
+
+This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
+
+Rules:
+- For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
+- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
+- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
+- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
