@@ -25,6 +25,11 @@ export GRAPHIFY_CLAUDE_CLI_MODEL="${GRAPHIFY_CLAUDE_CLI_MODEL:-sonnet}"
 
 rsync -a --delete --exclude 'graphify-out' --exclude '.DS_Store' "$SRC/" "$CORPUS/"
 cd "$CORPUS"
-graphify extract . --backend claude-cli
-graphify cluster-only . --backend claude-cli || true
+# Gemini key lives in a private file (launchd does not load ~/.zshrc). Without it, fall back to the Claude plan.
+[ -f "$HOME/.config/types/graphify.env" ] && . "$HOME/.config/types/graphify.env"
+[ "${GEMINI_API_KEY:-}" = "PEGA_TU_KEY_AQUI" ] && unset GEMINI_API_KEY
+if [ -n "${GEMINI_API_KEY:-}${GOOGLE_API_KEY:-}" ]; then BACKEND=gemini; else BACKEND=claude-cli; fi
+echo "backend: $BACKEND"
+graphify extract . --backend "$BACKEND" --mode "${GRAPHIFY_MODE:-deep}"
+graphify cluster-only . --backend "$BACKEND" || true
 echo "ok: $CORPUS/graphify-out/graph.json"
