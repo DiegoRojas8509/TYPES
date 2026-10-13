@@ -16,6 +16,8 @@ pub enum AppError {
     Invalid(String),
     /// Underlying filesystem or settings error.
     Io(String),
+    /// No Claude Code binary could be found or started.
+    ClaudeNotFound,
 }
 
 impl AppError {
@@ -26,6 +28,7 @@ impl AppError {
             AppError::NotFound(_) => "not_found",
             AppError::Invalid(_) => "invalid",
             AppError::Io(_) => "io",
+            AppError::ClaudeNotFound => "claude_not_found",
         }
     }
 
@@ -36,6 +39,9 @@ impl AppError {
             AppError::NotFound(what) => format!("No se encontró: {what}."),
             AppError::Invalid(why) => format!("Operación no válida: {why}."),
             AppError::Io(e) => format!("No se pudo completar la operación: {e}"),
+            AppError::ClaudeNotFound => {
+                "No encuentro Claude Code. Instálalo e inicia sesión, o indica su ruta en Ajustes.".into()
+            }
         }
     }
 }

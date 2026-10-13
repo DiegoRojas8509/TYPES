@@ -2,7 +2,7 @@ use crate::error::{AppError, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use tauri::State;
+use tauri::{AppHandle, State};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -92,8 +92,10 @@ pub fn get_settings(state: State<AppState>) -> Settings {
 }
 
 #[tauri::command]
-pub fn set_workspace_root(state: State<AppState>, path: String) -> Result<Settings> {
-    set_workspace_root_in(&state, path)
+pub fn set_workspace_root(app: AppHandle, state: State<AppState>, path: String) -> Result<Settings> {
+    let settings = set_workspace_root_in(&state, path)?;
+    crate::watcher::restart(&app);
+    Ok(settings)
 }
 
 #[tauri::command]
