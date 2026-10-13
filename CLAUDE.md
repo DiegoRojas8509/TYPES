@@ -103,3 +103,8 @@ Rules:
 - If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
 - Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
 - After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
+
+## Grafo de los apuntes (espacios/)
+`espacios/` está en `.gitignore`, así que graphify no la ve en sitio. Un job diario (launchd `com.diego.types-notas`, 22:00; si la Mac duerme corre al despertar) ejecuta `scripts/notas-grafo.sh`: espeja `espacios/` a `~/.local/share/types-notas/` (fuera de iCloud y del repo) y extrae con el backend `claude-cli` (usa el plan de Claude Code, sin API key; modelo sonnet). Es incremental: solo reprocesa notas nuevas o cambiadas. Log: `~/.cache/types-notas.log`.
+- Consultar los apuntes: `graphify query "<pregunta>" --graph ~/.local/share/types-notas/graphify-out/graph.json` (también `path` y `explain`). El grafo del código sigue en `graphify-out/` del repo.
+- Refresco manual: `scripts/notas-grafo.sh`. Si el grafo pudo quedar viejo (notas del mismo día), correrlo antes de consultar.
