@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { baseName, extOf, isWithin, joinRel, kindOf, parentOf, replacePrefix, spaceOf } from "./paths";
+import { baseName, extOf, isWithin, joinRel, kindOf, parentOf, replacePrefix, spaceOf, titleOf } from "./paths";
 
 describe("paths", () => {
   it("spaceOf returns the first segment", () => {
@@ -44,5 +44,16 @@ describe("paths", () => {
   it("replacePrefix remaps descendants", () => {
     expect(replacePrefix("Ropa/a/b.md", "Ropa", "Moda")).toBe("Moda/a/b.md");
     expect(replacePrefix("Ropa", "Ropa", "Moda")).toBe("Moda");
+  });
+});
+
+describe("titleOf", () => {
+  it("drops the extension of Markdown pages only", () => {
+    expect(titleOf("Ropa/Daring Martin.md")).toBe("Daring Martin");
+    expect(titleOf("Ropa/Notas.markdown")).toBe("Notas");
+    expect(titleOf("Ropa/Dashboard.html")).toBe("Dashboard.html");
+    expect(titleOf("Ropa/foto.png")).toBe("foto.png");
+    expect(titleOf("CLAUDE.md")).toBe("CLAUDE");
+    expect(titleOf("Ropa/a.md.md")).toBe("a.md");
   });
 });

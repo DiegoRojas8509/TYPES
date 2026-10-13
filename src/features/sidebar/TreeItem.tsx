@@ -1,6 +1,6 @@
 import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
 import type { TreeNode } from "../../lib/api";
-import { kindOf } from "../../lib/paths";
+import { kindOf, titleOf } from "../../lib/paths";
 import {
   IconChevron,
   IconCode,
@@ -21,7 +21,7 @@ export type Editing =
 
 /** Markdown pages hide their extension; everything else shows its full name. */
 export function displayName(node: TreeNode): string {
-  return node.kind === "file" && kindOf(node.path) === "markdown" ? node.name.replace(/\.(md|markdown)$/i, "") : node.name;
+  return node.kind === "file" ? titleOf(node.path) : node.name;
 }
 
 function fileIcon(path: string): ReactNode {

@@ -8,6 +8,12 @@ export function baseName(path: string): string {
   return path.slice(path.lastIndexOf("/") + 1);
 }
 
+/** What Diego sees: Markdown pages drop their extension, every other file keeps its full name. */
+export function titleOf(path: string): string {
+  const name = baseName(path);
+  return kindOf(path) === "markdown" ? name.replace(/\.(md|markdown)$/i, "") : name;
+}
+
 export function parentOf(path: string): string {
   const i = path.lastIndexOf("/");
   return i < 0 ? "" : path.slice(0, i);
