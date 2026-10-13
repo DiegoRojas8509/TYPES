@@ -29,13 +29,15 @@ Para features nuevas usa superpowers (brainstorming → writing-plans → subage
 Tauri 2 · Rust · React 19 + TypeScript + Vite · pnpm · Zustand (estado) · Tiptap con serialización Markdown (editor) · Vitest y `cargo test`.
 Antes de usar una librería, confirma su API actual con context7; no programes de memoria.
 
-### Dos carpetas distintas
-- **Repo del código:** `~/Documents/TYPES` (aquí).
-- **Carpeta de datos (workspace):** por defecto `~/Documents/TYPES-espacios`, configurable desde la app. Va **fuera del repo** a propósito: Claude Code carga todos los CLAUDE.md desde la carpeta donde arranca hacia arriba, y el agente de negocio no debe leer esta guía de desarrollo. Además los datos de negocio no deben subir a GitHub.
+### Dónde vive cada cosa
+- **Carpeta física:** `~/Documents/TYPES.nosync` (el sufijo `.nosync` evita que iCloud la suba y permite liberar espacio). `~/Documents/TYPES` es un acceso directo (symlink) hacia ella: usa esa ruta para que la memoria y las herramientas sigan funcionando.
+- **Código:** todo el repo salvo `espacios/`.
+- **Carpeta de datos (workspace):** por defecto `~/Documents/TYPES/espacios` (decisión de Diego, 2026-10-13: quiere sus espacios dentro de TYPES), configurable desde la app. Está en `.gitignore`: **son datos de negocio y el repo de GitHub es público, nunca se commitean.**
+- **Contrapartida conocida:** Claude Code carga los CLAUDE.md de todas las carpetas padre. El agente que arranca en `espacios/<espacio>` también lee esta guía de desarrollo (regla de modelos, arquitectura). Es ruido, no un fallo. Si estorba, evaluar `claudeMdExcludes` en los ajustes del workspace; confirma primero que ese ajuste existe en la versión instalada.
 
 ### Formato del workspace
 ```
-TYPES-espacios/
+espacios/
   CLAUDE.md            reglas de formato para Claude (plantilla que crea la app)
   Ropa/                un espacio = un negocio o proyecto
     CLAUDE.md          contexto de ese negocio (proveedores, tarifas, mermas, márgenes)
@@ -86,7 +88,7 @@ pnpm tauri build --bundles app   # -> src-tauri/target/release/bundle/macos/Type
 Entorno: Node solo por nvm (`source ~/.nvm/nvm.sh`), Rust por rustup (`~/.cargo/bin`). Sin Xcode completo: solo Command Line Tools.
 
 ## 7. Decisiones tomadas por Claude (Diego puede cambiarlas)
-- Workspace fuera del repo, en `~/Documents/TYPES-espacios`.
+- Workspace dentro del proyecto pero ignorado por git: `~/Documents/TYPES/espacios` (cambio pedido por Diego; antes estaba fuera del repo).
 - Tiptap + Markdown como editor.
 - Agente embebido con `acceptEdits` y sin Bash en la fase 1.
 - Un proceso de Claude por mensaje con `--resume`, en lugar de un proceso vivo.

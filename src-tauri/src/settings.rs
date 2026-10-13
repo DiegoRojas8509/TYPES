@@ -14,7 +14,7 @@ pub struct Settings {
 impl Settings {
     pub fn default_for_home(home: &Path) -> Self {
         Settings {
-            workspace_root: home.join("Documents").join("TYPES-espacios"),
+            workspace_root: home.join("Documents").join("TYPES").join("espacios"),
             claude_path: None,
         }
     }
@@ -128,7 +128,7 @@ mod tests {
     #[test]
     fn default_is_documents_types_espacios() {
         let s = Settings::default_for_home(Path::new("/h"));
-        assert_eq!(s.workspace_root, PathBuf::from("/h/Documents/TYPES-espacios"));
+        assert_eq!(s.workspace_root, PathBuf::from("/h/Documents/TYPES/espacios"));
         assert!(s.claude_path.is_none());
     }
 

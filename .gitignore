@@ -7,3 +7,6 @@ graphify-out
 .claude/skills
 *.log
 *.local
+
+# Datos de negocio de Diego (nunca al repo público)
+espacios/
