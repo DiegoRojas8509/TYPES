@@ -245,7 +245,7 @@ function denialsNotice(denials: unknown[]): string | null {
   const names = [...new Set(denials.map((d) => (isObj(d) && typeof d.tool_name === "string" ? d.tool_name : null)).filter((n): n is string => !!n))];
   if (!denials.length) return null;
   const which = names.length ? names.map((n) => `«${n}»`).join(", ") : "una herramienta";
-  return `Claude quiso usar ${which}, pero Types no se lo permite todavía. Solo puede leer, escribir y editar archivos y buscar en la web.`;
+  return `Claude quiso usar ${which}, pero Types no se lo permite.`;
 }
 
 function resultLine(s: ChatState, line: Record<string, any>): ChatState {

@@ -63,10 +63,11 @@ espacios/
 
 ### Integración con Claude Code
 - Binario, en este orden: ruta manual en ajustes → `claude` en el PATH del shell de login → la extensión de VS Code más reciente en `~/.vscode/extensions/anthropic.claude-code-*/resources/native-binary/claude`. (En esta Mac hoy solo existe la tercera.)
-- Un proceso por mensaje: `claude -p <texto> --output-format stream-json --verbose --include-partial-messages --permission-mode acceptEdits --allowedTools Read Write Edit Glob Grep WebSearch WebFetch [--resume <session_id>]`, con `cwd` = carpeta del espacio.
+- Un proceso por mensaje: `claude -p <texto> --output-format stream-json --verbose --include-partial-messages --permission-mode acceptEdits --allowedTools Read Write Edit Glob Grep WebSearch WebFetch Bash Skill Agent NotebookEdit [--model <alias>] [--resume <session_id>]`, con `cwd` = carpeta del espacio.
 - Una conversación por espacio; el `session_id` se guarda para continuarla.
 - Las imágenes del chat se guardan en `<espacio>/adjuntos/` y se le pasan a Claude como rutas en el mensaje.
-- Fase 1 sin Bash para el agente embebido: en modo no interactivo no hay forma de aprobar permisos. Si hace falta, se diseña una interfaz de permisos en una fase posterior.
+- Bash, Skill, Agent y NotebookEdit permitidos al agente embebido (decisión de Diego, 2026-10-13: mismos accesos que Claude Code en su terminal). En modo no interactivo no hay forma de aprobar permisos, así que van sin restricción. Riesgo aceptado: una nota o página web con instrucciones maliciosas podría hacerle ejecutar comandos. Si hace falta, diseñar una interfaz de permisos o restringir con `Bash(patrón)`.
+- Selector de modelo en el compositor (`src/lib/model.ts`, se guarda en localStorage); se pasa como `--model` por mensaje. "Predeterminado" = el modelo por defecto del Claude Code instalado.
 
 ## 5. Reglas de implementación
 - **Nunca perder texto de Diego.** Guardado automático con espera de 800 ms. Si un archivo abierto cambia en disco: sin cambios locales pendientes se recarga solo; con cambios pendientes se avisa y Diego elige.

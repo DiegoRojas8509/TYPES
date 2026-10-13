@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, State};
 
-const ALLOWED_TOOLS: &str = "Read,Write,Edit,Glob,Grep,WebSearch,WebFetch";
+const ALLOWED_TOOLS: &str = "Read,Write,Edit,Glob,Grep,WebSearch,WebFetch,Bash,Skill,Agent,NotebookEdit";
 
 // ---------- binary lookup (pure) ----------
 
@@ -348,14 +348,14 @@ mod tests {
     }
 
     #[test]
-    fn build_args_has_required_flags_and_no_bash() {
+    fn build_args_has_required_flags_and_bash() {
         let a = build_args("Responde solo: ok", &[], None, None);
         assert_eq!(a.first().map(String::as_str), Some("-p"));
         for f in ["--output-format", "stream-json", "--verbose", "--include-partial-messages", "--permission-mode", "acceptEdits", "--allowedTools"] {
             assert!(a.iter().any(|x| x == f), "missing {f}");
         }
         assert!(a.contains(&ALLOWED_TOOLS.to_string()));
-        assert!(!a.iter().any(|x| x.contains("Bash")));
+        assert!(ALLOWED_TOOLS.split(',').any(|x| x == "Bash"));
         assert!(!a.iter().any(|x| x == "--resume"));
         // The prompt is the last argument, behind `--`.
         let n = a.len();
