@@ -1,6 +1,6 @@
 // The only module allowed to import from @tauri-apps/api. Everything else
 // talks to Rust through the typed wrappers below.
-import { invoke } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 export interface Settings {
@@ -84,6 +84,11 @@ export const api = {
     invoke<number>("claude_send", { space, text, attachments, sessionId }),
   claudeStop: (runId: number) => invoke<void>("claude_stop", { runId }),
 };
+
+/** URL the webview can load for an absolute path (needs the asset protocol enabled). */
+export function assetUrl(absolutePath: string): string {
+  return convertFileSrc(absolutePath);
+}
 
 export function onFsChanged(cb: (payload: FsChangedPayload) => void): Promise<UnlistenFn> {
   return listen<FsChangedPayload>("fs-changed", (e) => cb(e.payload));

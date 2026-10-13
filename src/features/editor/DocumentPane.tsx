@@ -1,9 +1,10 @@
 import { kindOf } from "../../lib/paths";
 import { useApp } from "../../store/app";
+import { MarkdownEditor } from "./Editor";
 
 /**
- * PLACEHOLDER for the middle pane. Task 5 replaces the markdown branch with the
- * Tiptap editor and Task 6 the html/image/other branches with the viewers.
+ * Middle pane. The markdown branch is the Tiptap editor (Task 5); Task 6 replaces
+ * the html/image/other placeholders with the viewers.
  * Read `openPath` (workspace-relative) from the store; use `kindOf(openPath)` to
  * pick the renderer; watch `fsChange` to react to disk changes. Keep the empty state.
  */
@@ -23,6 +24,8 @@ export function DocumentPane() {
       </div>
     );
   }
+
+  if (kindOf(openPath) === "markdown") return <MarkdownEditor key={openPath} path={openPath} />;
 
   return (
     <div className="empty" data-testid="document-placeholder" data-kind={kindOf(openPath)}>

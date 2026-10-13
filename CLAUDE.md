@@ -90,3 +90,4 @@ Entorno: Node solo por nvm (`source ~/.nvm/nvm.sh`), Rust por rustup (`~/.cargo/
 - Tiptap + Markdown como editor.
 - Agente embebido con `acceptEdits` y sin Bash en la fase 1.
 - Un proceso de Claude por mensaje con `--resume`, en lugar de un proceso vivo.
+- Editor (`@tiptap/markdown` 3.x): al primer guardado normaliza la sintaxis (viñetas a `-`, tablas realineadas, sin salto de línea final); no se escribe nada hasta que Diego edita. Las páginas con YAML, comentarios HTML, bloques HTML o notas al pie se abren en solo lectura porque el editor las corrompería (Diego puede forzar la edición). Imágenes en disco: ruta relativa a la carpeta de la página (`adjuntos/a.png`, o `../adjuntos/a.png` en subcarpetas).
