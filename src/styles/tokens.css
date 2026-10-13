@@ -1,0 +1,77 @@
+/* Design tokens. Light by default, dark when the system asks for it.
+   Components use only these variables; never raw colours. */
+:root {
+  color-scheme: light dark;
+
+  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-md: 13px;
+  --text-lg: 15px;
+  --text-xl: 20px;
+
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 8px;
+  --space-4: 12px;
+  --space-5: 16px;
+  --space-6: 24px;
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+
+  --row-h: 26px;
+  --sidebar-w: 260px;
+  --chat-w: 380px;
+
+  /* surfaces */
+  --bg: #ffffff;
+  --bg-side: #f7f7f5;
+  --bg-raised: #ffffff;
+  --bg-hover: rgba(55, 53, 47, 0.07);
+  --bg-selected: rgba(55, 53, 47, 0.12);
+  --border: #e6e5e1;
+  --border-strong: #cfcdc7;
+
+  /* text */
+  --text: #37352f;
+  --text-muted: #787774;
+  --text-faint: #a5a39d;
+
+  /* accents */
+  --accent: #2f6fb5;
+  --accent-text: #ffffff;
+  --danger: #c4392d;
+  --danger-bg: #fdecea;
+  --info-bg: #eef3f9;
+
+  --shadow-pop: 0 4px 18px rgba(15, 15, 15, 0.14), 0 0 0 1px rgba(15, 15, 15, 0.06);
+  --scrim: rgba(15, 15, 15, 0.32);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #191919;
+    --bg-side: #202020;
+    --bg-raised: #252525;
+    --bg-hover: rgba(255, 255, 255, 0.07);
+    --bg-selected: rgba(255, 255, 255, 0.13);
+    --border: #2f2f2f;
+    --border-strong: #454545;
+
+    --text: #e6e5e1;
+    --text-muted: #9b9a96;
+    --text-faint: #6f6e6a;
+
+    --accent: #5a9bdc;
+    --accent-text: #0d1b2a;
+    --danger: #f0867b;
+    --danger-bg: #3a2220;
+    --info-bg: #222c37;
+
+    --shadow-pop: 0 4px 18px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.08);
+    --scrim: rgba(0, 0, 0, 0.55);
+  }
+}

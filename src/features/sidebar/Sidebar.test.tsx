@@ -1,0 +1,113 @@
+import { fireEvent, render, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { TreeNode } from "../../lib/api";
+
+vi.mock("../../lib/api", () => ({
+  api: {
+    getSettings: vi.fn(),
+    listTree: vi.fn().mockResolvedValue([]),
+    createSpace: vi.fn(),
+    createPage: vi.fn(),
+    createFolder: vi.fn(),
+    renameEntry: vi.fn(),
+    deleteEntry: vi.fn(),
+  },
+  onFsChanged: vi.fn(async () => () => {}),
+  errorMessage: (e: unknown) => (e as { message?: string }).message ?? "error",
+}));
+
+import { api } from "../../lib/api";
+import { initialState, useApp } from "../../store/app";
+import { Sidebar } from "./Sidebar";
+
+const file = (path: string): TreeNode => ({ name: path.split("/").pop()!, path, kind: "file", children: [] });
+const tree: TreeNode[] = [
+  {
+    name: "Ropa",
+    path: "Ropa",
+    kind: "dir",
+    children: [
+      { name: "Telas", path: "Ropa/Telas", kind: "dir", children: [file("Ropa/Telas/Algodón.md")] },
+      file("Ropa/Notas.md"),
+      file("Ropa/Dashboard.html"),
+    ],
+  },
+];
+const mocked = vi.mocked(api);
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  useApp.setState(initialState());
+});
+
+describe("Sidebar", () => {
+  it("invites creating the first space when the tree is empty", () => {
+    useApp.setState({ tree: [], treeLoaded: true });
+    render(<Sidebar />);
+    expect(screen.getByText("Crea tu primer espacio")).toBeInTheDocument();
+  });
+
+  it("renders spaces and nested pages from the tree", () => {
+    useApp.setState({ tree, treeLoaded: true, expanded: { Ropa: true, "Ropa/Telas": true } });
+    render(<Sidebar />);
+    expect(screen.getByText("Ropa")).toBeInTheDocument();
+    expect(screen.getByText("Telas")).toBeInTheDocument();
+    expect(screen.getByText("Algodón")).toBeInTheDocument();
+    expect(screen.getByText("Notas")).toBeInTheDocument();
+    expect(screen.getByText("Dashboard.html")).toBeInTheDocument();
+  });
+
+  it("hides children of collapsed folders", () => {
+    useApp.setState({ tree, treeLoaded: true, expanded: { Ropa: true } });
+    render(<Sidebar />);
+    expect(screen.queryByText("Algodón")).not.toBeInTheDocument();
+  });
+
+  it("clicking a page opens it", () => {
+    useApp.setState({ tree, treeLoaded: true, expanded: { Ropa: true } });
+    render(<Sidebar />);
+    fireEvent.click(screen.getByText("Notas"));
+    expect(useApp.getState().openPath).toBe("Ropa/Notas.md");
+    expect(useApp.getState().activeSpace).toBe("Ropa");
+  });
+
+  it("marks the open page as selected", () => {
+    useApp.setState({ tree, treeLoaded: true, expanded: { Ropa: true }, openPath: "Ropa/Notas.md" });
+    render(<Sidebar />);
+    expect(screen.getByText("Notas").closest("[role=treeitem]")).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("creates a space from the inline input", async () => {
+    mocked.createSpace.mockResolvedValue("Ropa");
+    useApp.setState({ tree: [], treeLoaded: true });
+    render(<Sidebar />);
+    fireEvent.click(screen.getByRole("button", { name: "Nuevo espacio" }));
+    const input = screen.getByRole("textbox", { name: "Nombre del espacio" });
+    fireEvent.change(input, { target: { value: "Ropa" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await vi.waitFor(() => expect(mocked.createSpace).toHaveBeenCalledWith("Ropa"));
+  });
+
+  it("asks for confirmation before deleting and then trashes", async () => {
+    mocked.deleteEntry.mockResolvedValue(undefined);
+    useApp.setState({ tree, treeLoaded: true, expanded: { Ropa: true } });
+    render(<Sidebar />);
+    fireEvent.click(screen.getByRole("button", { name: "Eliminar Notas" }));
+    expect(screen.getByText(/Se moverá a la papelera/)).toBeInTheDocument();
+    expect(mocked.deleteEntry).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Mover a la papelera" }));
+    await vi.waitFor(() => expect(mocked.deleteEntry).toHaveBeenCalledWith("Ropa/Notas.md"));
+  });
+
+  it("renames inline and keeps the typed name", async () => {
+    mocked.renameEntry.mockResolvedValue("Ropa/Ideas.md");
+    useApp.setState({ tree, treeLoaded: true, expanded: { Ropa: true } });
+    render(<Sidebar />);
+    fireEvent.click(screen.getByRole("button", { name: "Renombrar Notas" }));
+    const input = screen.getByRole("textbox", { name: "Nuevo nombre" });
+    expect(input).toHaveValue("Notas");
+    fireEvent.change(input, { target: { value: "Ideas" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await vi.waitFor(() => expect(mocked.renameEntry).toHaveBeenCalledWith("Ropa/Notas.md", "Ideas"));
+  });
+});
