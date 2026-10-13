@@ -228,6 +228,11 @@ describe("ChatPanel", () => {
     expect(screen.getByText("recuérdame")).toBeInTheDocument();
     expect(screen.getByText("hecho")).toBeInTheDocument();
     fireEvent.click(screen.getByText("Nueva conversación"));
+    expect(screen.getByText("recuérdame")).toBeInTheDocument(); // one click only asks
+    fireEvent.click(screen.getByText("Cancelar"));
+    expect(screen.getByText("recuérdame")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Nueva conversación"));
+    fireEvent.click(screen.getByText("Borrar y empezar"));
     expect(screen.queryByText("recuérdame")).not.toBeInTheDocument();
     expect(loadConversation("Ropa")).toBeNull();
   });

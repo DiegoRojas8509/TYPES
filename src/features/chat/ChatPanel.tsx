@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { baseName } from "../../lib/paths";
 import { useApp } from "../../store/app";
 import { Composer } from "./Composer";
@@ -97,9 +97,12 @@ function SpaceChat({ space }: { space: string }) {
   const claudeMissing = useChats((s) => s.claudeMissing);
   const scroller = useRef<HTMLDivElement>(null);
   const stuck = useRef(true);
+  // Clearing a conversation cannot be undone, so it takes a second, explicit click.
+  const [confirming, setConfirming] = useState(false);
 
   useLayoutEffect(() => {
     useChats.getState().ensure(space);
+    setConfirming(false);
   }, [space]);
 
   useEffect(() => {
@@ -128,13 +131,31 @@ function SpaceChat({ space }: { space: string }) {
         <span className="chat-space" title={space}>
           {space}
         </span>
-        <button
-          className="btn"
-          disabled={conv.running || (!conv.items.length && !conv.sessionId)}
-          onClick={() => useChats.getState().reset(space)}
-        >
-          Nueva conversación
-        </button>
+        {confirming ? (
+          <>
+            <span className="chat-confirm">Se borra este chat. Claude conserva el contexto del espacio.</span>
+            <button
+              className="btn"
+              onClick={() => {
+                useChats.getState().reset(space);
+                setConfirming(false);
+              }}
+            >
+              Borrar y empezar
+            </button>
+            <button className="btn" onClick={() => setConfirming(false)}>
+              Cancelar
+            </button>
+          </>
+        ) : (
+          <button
+            className="btn"
+            disabled={conv.running || (!conv.items.length && !conv.sessionId)}
+            onClick={() => setConfirming(true)}
+          >
+            Nueva conversación
+          </button>
+        )}
       </div>
       <div className="chat-scroll" ref={scroller} onScroll={onScroll} role="log" aria-live="polite">
         {!conv.items.length && !conv.running && (
