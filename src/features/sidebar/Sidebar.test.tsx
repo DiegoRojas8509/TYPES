@@ -41,6 +41,30 @@ beforeEach(() => {
 });
 
 describe("Sidebar", () => {
+  it("hides the CLAUDE.md files until the toggle asks for them", () => {
+    useApp.setState({
+      tree: [{ ...tree[0], children: [...tree[0].children, file("Ropa/CLAUDE.md")] }, file("CLAUDE.md")],
+      treeLoaded: true,
+      expanded: { Ropa: true },
+    });
+    render(<Sidebar />);
+    expect(screen.getByText("Notas")).toBeInTheDocument();
+    expect(screen.queryByText("CLAUDE")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText("Mostrar archivos de contexto"));
+    expect(screen.getAllByText("CLAUDE")).toHaveLength(2);
+
+    fireEvent.click(screen.getByLabelText("Ocultar archivos de contexto"));
+    expect(screen.queryByText("CLAUDE")).not.toBeInTheDocument();
+    localStorage.removeItem("types.showClaudeFiles");
+  });
+
+  it("offers no toggle when there is no CLAUDE.md to hide", () => {
+    useApp.setState({ tree, treeLoaded: true });
+    render(<Sidebar />);
+    expect(screen.queryByLabelText("Mostrar archivos de contexto")).not.toBeInTheDocument();
+  });
+
   it("invites creating the first space when the tree is empty", () => {
     useApp.setState({ tree: [], treeLoaded: true });
     render(<Sidebar />);

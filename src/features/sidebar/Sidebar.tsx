@@ -1,13 +1,14 @@
 import { useState } from "react";
 import type { TreeNode } from "../../lib/api";
+import { countClaudeFiles, getShowClaudeFiles, setShowClaudeFiles, withoutClaudeFiles } from "../../lib/claudeFiles";
 import { useApp } from "../../store/app";
-import { IconPlus } from "../shell/icons";
+import { IconCode, IconPlus } from "../shell/icons";
 import { ConfirmDelete } from "./ConfirmDelete";
 import { NameInput } from "./NameInput";
 import { displayName, TreeItem, type Editing } from "./TreeItem";
 
 export function Sidebar() {
-  const tree = useApp((s) => s.tree);
+  const allNodes = useApp((s) => s.tree);
   const treeLoaded = useApp((s) => s.treeLoaded);
   const expanded = useApp((s) => s.expanded);
   const openPath = useApp((s) => s.openPath);
@@ -16,7 +17,10 @@ export function Sidebar() {
 
   const [editing, setEditing] = useState<Editing | null>(null);
   const [toDelete, setToDelete] = useState<TreeNode | null>(null);
+  const [showClaude, setShowClaude] = useState(getShowClaudeFiles);
 
+  const hiddenClaude = countClaudeFiles(allNodes);
+  const tree = showClaude ? allNodes : withoutClaudeFiles(allNodes);
   const spaces = tree.filter((n) => n.kind === "dir");
   const looseFiles = tree.filter((n) => n.kind === "file");
   const creatingSpace = editing?.kind === "create-space";
@@ -101,9 +105,29 @@ export function Sidebar() {
     <nav className="sidebar" aria-label="Espacios y páginas">
       <div className="sidebar-head">
         <span className="sidebar-title">Types</span>
-        <button className="icon-btn" aria-label="Nuevo espacio" title="Nuevo espacio" onClick={() => setEditing({ kind: "create-space" })}>
-          <IconPlus />
-        </button>
+        <span className="sidebar-head-actions">
+          {hiddenClaude > 0 && (
+            <button
+              className="icon-btn"
+              aria-label={showClaude ? "Ocultar archivos de contexto" : "Mostrar archivos de contexto"}
+              title={
+                showClaude
+                  ? "Ocultar los CLAUDE.md"
+                  : "Mostrar los CLAUDE.md (el contexto que lee Claude; sigue activo aunque no se vean)"
+              }
+              aria-pressed={showClaude}
+              onClick={() => {
+                setShowClaude(!showClaude);
+                setShowClaudeFiles(!showClaude);
+              }}
+            >
+              <IconCode />
+            </button>
+          )}
+          <button className="icon-btn" aria-label="Nuevo espacio" title="Nuevo espacio" onClick={() => setEditing({ kind: "create-space" })}>
+            <IconPlus />
+          </button>
+        </span>
       </div>
 
       <div className="sidebar-list" role="tree">
