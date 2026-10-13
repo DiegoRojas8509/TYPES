@@ -1,0 +1,651 @@
+use crate::error::{AppError, Result};
+use crate::settings::AppState;
+use serde::Serialize;
+use std::io::Write;
+use std::path::{Component, Path, PathBuf};
+use tauri::State;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum NodeKind {
+    Dir,
+    File,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct TreeNode {
+    pub name: String,
+    pub path: String,
+    pub kind: NodeKind,
+    pub children: Vec<TreeNode>,
+}
+
+const ADJUNTOS: &str = "adjuntos";
+
+fn is_taken(path: &Path) -> bool {
+    std::fs::symlink_metadata(path).is_ok()
+}
+
+/// Splits a path string into safe `Normal` components. Anything else
+/// (`..`, absolute, backslashes, NUL, prefixes) escapes the workspace.
+fn rel_parts(rel: &str) -> Result<Vec<String>> {
+    if rel.contains('\0') || rel.contains('\\') {
+        return Err(AppError::OutsideWorkspace);
+    }
+    let mut parts = Vec::new();
+    for c in Path::new(rel).components() {
+        match c {
+            Component::Normal(s) => {
+                parts.push(s.to_str().ok_or(AppError::OutsideWorkspace)?.to_string())
+            }
+            Component::CurDir => {}
+            _ => return Err(AppError::OutsideWorkspace),
+        }
+    }
+    Ok(parts)
+}
+
+fn join_rel(parts: &[String]) -> String {
+    parts.join("/")
+}
+
+/// Resolves `rel` under `root`, walking component by component so that
+/// symlinks are checked even when the final path does not exist yet.
+pub fn resolve(root: &Path, rel: &str) -> Result<PathBuf> {
+    let parts = rel_parts(rel)?;
+    let canon_root = root.canonicalize()?;
+    let mut cur = canon_root.clone();
+    for (i, part) in parts.iter().enumerate() {
+        let next = cur.join(part);
+        match std::fs::symlink_metadata(&next) {
+            Ok(md) if md.file_type().is_symlink() => {
+                let target = next.canonicalize().map_err(|_| AppError::OutsideWorkspace)?;
+                if !target.starts_with(&canon_root) {
+                    return Err(AppError::OutsideWorkspace);
+                }
+                cur = target;
+            }
+            Ok(_) => cur = next,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                cur = next;
+                for rest in &parts[i + 1..] {
+                    cur.push(rest);
+                }
+                break;
+            }
+            Err(e) => return Err(e.into()),
+        }
+    }
+    if !cur.starts_with(&canon_root) {
+        return Err(AppError::OutsideWorkspace);
+    }
+    Ok(cur)
+}
+
+/// Like `resolve` for an existing entry that will be renamed or deleted:
+/// the entry itself must not be a symlink and must not be the root.
+fn resolve_entry(root: &Path, rel: &str) -> Result<PathBuf> {
+    let parts = rel_parts(rel)?;
+    let (last, parent) = parts
+        .split_last()
+        .ok_or_else(|| AppError::Invalid("no se puede modificar la carpeta raíz".into()))?;
+    let full = resolve(root, &join_rel(parent))?.join(last);
+    match std::fs::symlink_metadata(&full) {
+        Ok(md) if md.file_type().is_symlink() => {
+            Err(AppError::Invalid("no se pueden modificar enlaces simbólicos".into()))
+        }
+        Ok(_) => Ok(full),
+        Err(e) => Err(e.into()),
+    }
+}
+
+fn resolve_dir(root: &Path, rel: &str) -> Result<PathBuf> {
+    let p = resolve(root, rel)?;
+    if p.is_dir() {
+        Ok(p)
+    } else {
+        Err(AppError::NotFound("la carpeta".into()))
+    }
+}
+
+pub fn validate_name(name: &str) -> Result<&str> {
+    let n = name.trim();
+    let why = if n.is_empty() {
+        "no puede estar vacío"
+    } else if n.contains('/') || n.contains('\\') || n.contains('\0') {
+        "no puede contener / ni \\"
+    } else if n.starts_with('.') {
+        "no puede empezar con punto"
+    } else if n.len() > 200 {
+        "es demasiado largo"
+    } else {
+        return Ok(n);
+    };
+    Err(AppError::InvalidName(why.into()))
+}
+
+/// `stem + ext` if free in `dir`, else `stem 2 + ext`, `stem 3 + ext`...
+fn unique_name(dir: &Path, stem: &str, ext: &str) -> String {
+    let mut candidate = format!("{stem}{ext}");
+    let mut n = 2;
+    while is_taken(&dir.join(&candidate)) {
+        candidate = format!("{stem} {n}{ext}");
+        n += 1;
+    }
+    candidate
+}
+
+fn split_ext(name: &str) -> (&str, &str) {
+    match name.rfind('.') {
+        Some(i) if i > 0 => name.split_at(i),
+        _ => (name, ""),
+    }
+}
+
+fn child_rel(dir_parts: &[String], name: &str) -> String {
+    if dir_parts.is_empty() {
+        name.to_string()
+    } else {
+        format!("{}/{}", join_rel(dir_parts), name)
+    }
+}
+
+pub fn ensure_root(root: &Path) -> Result<()> {
+    std::fs::create_dir_all(root)?;
+    let file = root.join("CLAUDE.md");
+    match std::fs::OpenOptions::new().write(true).create_new(true).open(&file) {
+        Ok(mut f) => f.write_all(crate::templates::ROOT_CLAUDE_MD.as_bytes())?,
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+        Err(e) => return Err(e.into()),
+    }
+    Ok(())
+}
+
+fn build_children(dir: &Path, rel_parts: &[String]) -> std::io::Result<Vec<TreeNode>> {
+    let mut nodes = Vec::new();
+    for entry in std::fs::read_dir(dir)? {
+        let Ok(entry) = entry else { continue };
+        let Ok(ft) = entry.file_type() else { continue };
+        let Some(name) = entry.file_name().to_str().map(String::from) else { continue };
+        if name.starts_with('.') || ft.is_symlink() {
+            continue;
+        }
+        let mut parts = rel_parts.to_vec();
+        parts.push(name.clone());
+        let path = join_rel(&parts);
+        if ft.is_dir() {
+            let children = build_children(&entry.path(), &parts).unwrap_or_default();
+            nodes.push(TreeNode { name, path, kind: NodeKind::Dir, children });
+        } else if ft.is_file() {
+            nodes.push(TreeNode { name, path, kind: NodeKind::File, children: Vec::new() });
+        }
+    }
+    nodes.sort_by(|a, b| {
+        (a.kind == NodeKind::File)
+            .cmp(&(b.kind == NodeKind::File))
+            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+            .then_with(|| a.name.cmp(&b.name))
+    });
+    Ok(nodes)
+}
+
+pub fn build_tree(root: &Path) -> Result<Vec<TreeNode>> {
+    Ok(build_children(&root.canonicalize()?, &[])?)
+}
+
+pub fn read_text_in(root: &Path, rel: &str) -> Result<String> {
+    let p = resolve(root, rel)?;
+    if !p.is_file() {
+        return Err(AppError::NotFound("el archivo".into()));
+    }
+    let bytes = std::fs::read(&p)?;
+    String::from_utf8(bytes).map_err(|_| AppError::Invalid("el archivo no es de texto".into()))
+}
+
+/// Writes atomically (temp file in the same folder, then rename) so a crash
+/// never leaves a half-written page.
+pub fn write_text_in(root: &Path, rel: &str, content: &str) -> Result<()> {
+    let p = resolve(root, rel)?;
+    let parent = p.parent().ok_or(AppError::OutsideWorkspace)?;
+    if !parent.is_dir() {
+        return Err(AppError::NotFound("la carpeta".into()));
+    }
+    if p.is_dir() {
+        return Err(AppError::Invalid("es una carpeta, no un archivo".into()));
+    }
+    let name = p.file_name().and_then(|n| n.to_str()).ok_or(AppError::OutsideWorkspace)?;
+    let tmp = parent.join(format!(".{name}.types-tmp"));
+    let result = std::fs::write(&tmp, content).and_then(|_| std::fs::rename(&tmp, &p));
+    if let Err(e) = result {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e.into());
+    }
+    Ok(())
+}
+
+pub fn create_space_in(root: &Path, name: &str) -> Result<String> {
+    let name = validate_name(name)?;
+    let root = resolve_dir(root, "")?;
+    let unique = unique_name(&root, name, "");
+    let dir = root.join(&unique);
+    std::fs::create_dir(&dir)?;
+    std::fs::write(dir.join("CLAUDE.md"), crate::templates::SPACE_CLAUDE_MD)?;
+    std::fs::create_dir(dir.join(ADJUNTOS))?;
+    Ok(unique)
+}
+
+pub fn create_page_in(root: &Path, dir: &str, name: &str) -> Result<String> {
+    let name = validate_name(name)?;
+    let dir_path = resolve_dir(root, dir)?;
+    let stem = match name.len().checked_sub(3) {
+        Some(i) if name.is_char_boundary(i) && name[i..].eq_ignore_ascii_case(".md") => &name[..i],
+        _ => name,
+    };
+    validate_name(stem)?;
+    let unique = unique_name(&dir_path, stem, ".md");
+    std::fs::write(dir_path.join(&unique), "")?;
+    Ok(child_rel(&rel_parts(dir)?, &unique))
+}
+
+pub fn create_folder_in(root: &Path, dir: &str, name: &str) -> Result<String> {
+    let name = validate_name(name)?;
+    let dir_path = resolve_dir(root, dir)?;
+    let unique = unique_name(&dir_path, name, "");
+    std::fs::create_dir(dir_path.join(&unique))?;
+    Ok(child_rel(&rel_parts(dir)?, &unique))
+}
+
+pub fn rename_entry_in(root: &Path, rel: &str, new_name: &str) -> Result<String> {
+    let new_name = validate_name(new_name)?;
+    let from = resolve_entry(root, rel)?;
+    let parts = rel_parts(rel)?;
+    let parent_parts = &parts[..parts.len() - 1];
+    let parent = from.parent().ok_or(AppError::OutsideWorkspace)?;
+    let current = parts.last().map(String::as_str).unwrap_or_default();
+
+    // Files keep their extension when the new name does not carry it.
+    let mut wanted = new_name.to_string();
+    if from.is_file() {
+        let ext = Path::new(current).extension().and_then(|e| e.to_str()).unwrap_or("");
+        if !ext.is_empty() && !wanted.to_lowercase().ends_with(&format!(".{}", ext.to_lowercase())) {
+            wanted = format!("{wanted}.{ext}");
+        }
+    }
+    if wanted == current {
+        return Ok(join_rel(&parts));
+    }
+    let final_name = if wanted.to_lowercase() == current.to_lowercase() {
+        wanted // case-only change: the "taken" entry is this very file
+    } else {
+        let (stem, ext) = split_ext(&wanted);
+        let (stem, ext) = if from.is_file() { (stem, ext) } else { (wanted.as_str(), "") };
+        unique_name(parent, stem, ext)
+    };
+    std::fs::rename(&from, parent.join(&final_name))?;
+    Ok(child_rel(parent_parts, &final_name))
+}
+
+/// `trasher` moves a path to the system trash; injected so tests never touch it.
+pub fn delete_entry_with(
+    root: &Path,
+    rel: &str,
+    trasher: impl Fn(&Path) -> Result<()>,
+) -> Result<()> {
+    let p = resolve_entry(root, rel)?;
+    trasher(&p)
+}
+
+fn system_trash(p: &Path) -> Result<()> {
+    trash::delete(p).map_err(|e| AppError::Io(e.to_string()))
+}
+
+/// Returns `<root>/<space>/adjuntos`, creating `adjuntos` if needed.
+/// `space` is the first path segment of `rel`.
+fn adjuntos_dir(root: &Path, rel: &str) -> Result<(PathBuf, String)> {
+    let parts = rel_parts(rel)?;
+    let space = parts
+        .first()
+        .ok_or_else(|| AppError::Invalid("falta indicar el espacio".into()))?;
+    let space_path = resolve_dir(root, space)?;
+    let dir = space_path.join(ADJUNTOS);
+    std::fs::create_dir_all(&dir)?;
+    Ok((dir, format!("{space}/{ADJUNTOS}")))
+}
+
+pub fn import_files_in(root: &Path, dest_dir: &str, sources: &[String]) -> Result<Vec<String>> {
+    let (dir, rel_dir) = adjuntos_dir(root, dest_dir)?;
+    let mut out = Vec::new();
+    for src in sources {
+        let src = Path::new(src);
+        if !src.is_absolute() {
+            return Err(AppError::Invalid("el origen debe ser una ruta absoluta".into()));
+        }
+        if !src.is_file() {
+            return Err(AppError::Invalid("solo se pueden importar archivos".into()));
+        }
+        let name = src.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+        let name = validate_name(name)?;
+        let (stem, ext) = split_ext(name);
+        let unique = unique_name(&dir, stem, ext);
+        std::fs::copy(src, dir.join(&unique))?;
+        out.push(format!("{rel_dir}/{unique}"));
+    }
+    Ok(out)
+}
+
+pub fn save_attachment_in(root: &Path, space: &str, file_name: &str, bytes: &[u8]) -> Result<String> {
+    let name = validate_name(file_name)?;
+    let (dir, rel_dir) = adjuntos_dir(root, space)?;
+    let (stem, ext) = split_ext(name);
+    let unique = unique_name(&dir, stem, ext);
+    std::fs::write(dir.join(&unique), bytes)?;
+    Ok(format!("{rel_dir}/{unique}"))
+}
+
+// --- Tauri commands: thin wrappers over the functions above ---
+
+#[tauri::command]
+pub fn list_tree(state: State<AppState>) -> Result<Vec<TreeNode>> {
+    build_tree(&state.root())
+}
+
+#[tauri::command]
+pub fn read_text(state: State<AppState>, path: String) -> Result<String> {
+    read_text_in(&state.root(), &path)
+}
+
+#[tauri::command]
+pub fn write_text(state: State<AppState>, path: String, content: String) -> Result<()> {
+    write_text_in(&state.root(), &path, &content)
+}
+
+#[tauri::command]
+pub fn create_space(state: State<AppState>, name: String) -> Result<String> {
+    create_space_in(&state.root(), &name)
+}
+
+#[tauri::command]
+pub fn create_page(state: State<AppState>, dir: String, name: String) -> Result<String> {
+    create_page_in(&state.root(), &dir, &name)
+}
+
+#[tauri::command]
+pub fn create_folder(state: State<AppState>, dir: String, name: String) -> Result<String> {
+    create_folder_in(&state.root(), &dir, &name)
+}
+
+#[tauri::command]
+pub fn rename_entry(state: State<AppState>, path: String, new_name: String) -> Result<String> {
+    rename_entry_in(&state.root(), &path, &new_name)
+}
+
+#[tauri::command]
+pub fn delete_entry(state: State<AppState>, path: String) -> Result<()> {
+    delete_entry_with(&state.root(), &path, system_trash)
+}
+
+#[tauri::command]
+pub fn import_files(state: State<AppState>, dest_dir: String, sources: Vec<String>) -> Result<Vec<String>> {
+    import_files_in(&state.root(), &dest_dir, &sources)
+}
+
+#[tauri::command]
+pub fn save_attachment(state: State<AppState>, space: String, file_name: String, bytes: Vec<u8>) -> Result<String> {
+    save_attachment_in(&state.root(), &space, &file_name, &bytes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    fn ws() -> (tempfile::TempDir, PathBuf) {
+        let d = tempfile::tempdir().unwrap();
+        let root = d.path().join("ws");
+        ensure_root(&root).unwrap();
+        (d, root)
+    }
+
+    #[test]
+    fn resolve_rejects_parent_escape() {
+        let (_d, root) = ws();
+        for p in ["../x", "a/../../x", "a/..", "..", "a/../b"] {
+            assert!(matches!(resolve(&root, p), Err(AppError::OutsideWorkspace)), "{p}");
+        }
+    }
+
+    #[test]
+    fn resolve_rejects_absolute() {
+        let (_d, root) = ws();
+        assert!(matches!(resolve(&root, "/etc/hosts"), Err(AppError::OutsideWorkspace)));
+        assert!(matches!(resolve(&root, "a\\b"), Err(AppError::OutsideWorkspace)));
+        assert!(matches!(resolve(&root, "a\0b"), Err(AppError::OutsideWorkspace)));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn resolve_rejects_symlink_outside() {
+        let (d, root) = ws();
+        let outside = d.path().join("outside");
+        fs::create_dir(&outside).unwrap();
+        fs::write(outside.join("secret.txt"), "s").unwrap();
+        std::os::unix::fs::symlink(&outside, root.join("link")).unwrap();
+        std::os::unix::fs::symlink(outside.join("secret.txt"), root.join("flink")).unwrap();
+        std::os::unix::fs::symlink(d.path().join("nope"), root.join("dangling")).unwrap();
+        // existing target through a dir link, a not-yet-existing file through it,
+        // a file link, and a dangling link
+        for p in ["link/secret.txt", "link/new.md", "link", "flink", "dangling"] {
+            assert!(matches!(resolve(&root, p), Err(AppError::OutsideWorkspace)), "{p}");
+        }
+        assert!(read_text_in(&root, "link/secret.txt").is_err());
+        assert!(write_text_in(&root, "link/new.md", "x").is_err());
+        assert!(!outside.join("new.md").exists());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn resolve_accepts_symlink_inside() {
+        let (_d, root) = ws();
+        fs::create_dir(root.join("real")).unwrap();
+        std::os::unix::fs::symlink(root.join("real"), root.join("alias")).unwrap();
+        assert!(resolve(&root, "alias/new.md").is_ok());
+    }
+
+    #[test]
+    fn resolve_accepts_unicode_and_new_paths() {
+        let (_d, root) = ws();
+        fs::create_dir(root.join("Ropa")).unwrap();
+        let p = resolve(&root, "Ropa/Diseño otoño.md").unwrap();
+        assert!(p.ends_with("Ropa/Diseño otoño.md"));
+        assert!(resolve(&root, "Ropa/nueva/mas/profunda.md").is_ok());
+        assert!(resolve(&root, "").is_ok());
+        assert!(resolve(&root, "./Ropa").is_ok());
+    }
+
+    #[test]
+    fn ensure_root_creates_claude_md_without_overwriting() {
+        let (_d, root) = ws();
+        assert!(root.join("CLAUDE.md").is_file());
+        fs::write(root.join("CLAUDE.md"), "mío").unwrap();
+        ensure_root(&root).unwrap();
+        assert_eq!(fs::read_to_string(root.join("CLAUDE.md")).unwrap(), "mío");
+    }
+
+    #[test]
+    fn tree_sorts_dirs_first_and_hides_dotfiles() {
+        let (_d, root) = ws();
+        fs::create_dir_all(root.join("b/sub")).unwrap();
+        fs::create_dir(root.join("A")).unwrap();
+        fs::create_dir(root.join(".git")).unwrap();
+        fs::write(root.join(".hidden"), "").unwrap();
+        fs::write(root.join("b/z.md"), "").unwrap();
+        fs::write(root.join("b/Ñandú.md"), "").unwrap();
+        fs::write(root.join("b/a.md"), "").unwrap();
+        let tree = build_tree(&root).unwrap();
+        let names: Vec<_> = tree.iter().map(|n| n.name.as_str()).collect();
+        assert_eq!(names, ["A", "b", "CLAUDE.md"]);
+        let b = &tree[1];
+        assert_eq!(b.kind, NodeKind::Dir);
+        let kids: Vec<_> = b.children.iter().map(|n| n.path.as_str()).collect();
+        assert_eq!(kids, ["b/sub", "b/a.md", "b/z.md", "b/Ñandú.md"]);
+        assert_eq!(serde_json::to_value(&b.children[1]).unwrap()["kind"], "file");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn tree_skips_symlinks() {
+        let (d, root) = ws();
+        std::os::unix::fs::symlink(d.path(), root.join("out")).unwrap();
+        assert!(build_tree(&root).unwrap().iter().all(|n| n.name != "out"));
+    }
+
+    #[test]
+    fn create_space_writes_claude_md_and_adjuntos() {
+        let (_d, root) = ws();
+        assert_eq!(create_space_in(&root, "Ropa").unwrap(), "Ropa");
+        let md = fs::read_to_string(root.join("Ropa/CLAUDE.md")).unwrap();
+        assert!(md.contains("Proveedores y tarifas") && md.contains("Márgenes objetivo"));
+        assert!(root.join("Ropa/adjuntos").is_dir());
+        assert_eq!(create_space_in(&root, "Ropa").unwrap(), "Ropa 2");
+    }
+
+    #[test]
+    fn names_are_validated() {
+        let (_d, root) = ws();
+        for bad in ["", "   ", "a/b", "a\\b", ".oculto", "..", "a\0b"] {
+            assert!(matches!(create_space_in(&root, bad), Err(AppError::InvalidName(_))), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn create_page_dedupes_name() {
+        let (_d, root) = ws();
+        create_space_in(&root, "Ropa").unwrap();
+        assert_eq!(create_page_in(&root, "Ropa", "Notas").unwrap(), "Ropa/Notas.md");
+        assert_eq!(create_page_in(&root, "Ropa", "Notas").unwrap(), "Ropa/Notas 2.md");
+        assert_eq!(create_page_in(&root, "Ropa", "Notas.md").unwrap(), "Ropa/Notas 3.md");
+        assert!(root.join("Ropa/Notas 2.md").is_file());
+        assert_eq!(fs::read_to_string(root.join("Ropa/Notas.md")).unwrap(), "");
+    }
+
+    #[test]
+    fn create_page_in_missing_dir_or_escape_fails() {
+        let (_d, root) = ws();
+        assert!(create_page_in(&root, "NoExiste", "x").is_err());
+        assert!(matches!(create_page_in(&root, "..", "x"), Err(AppError::OutsideWorkspace)));
+    }
+
+    #[test]
+    fn create_folder_dedupes() {
+        let (_d, root) = ws();
+        create_space_in(&root, "Ropa").unwrap();
+        assert_eq!(create_folder_in(&root, "Ropa", "Moldes").unwrap(), "Ropa/Moldes");
+        assert_eq!(create_folder_in(&root, "Ropa", "Moldes").unwrap(), "Ropa/Moldes 2");
+    }
+
+    #[test]
+    fn rename_keeps_extension_and_rejects_slash() {
+        let (_d, root) = ws();
+        create_space_in(&root, "Ropa").unwrap();
+        let p = create_page_in(&root, "Ropa", "Notas").unwrap();
+        assert_eq!(rename_entry_in(&root, &p, "Diseño otoño").unwrap(), "Ropa/Diseño otoño.md");
+        assert!(root.join("Ropa/Diseño otoño.md").is_file());
+        assert!(matches!(rename_entry_in(&root, "Ropa/Diseño otoño.md", "a/b"), Err(AppError::InvalidName(_))));
+        // already has extension: not doubled
+        assert_eq!(rename_entry_in(&root, "Ropa/Diseño otoño.md", "Final.md").unwrap(), "Ropa/Final.md");
+        // folders have no extension forced
+        create_folder_in(&root, "Ropa", "Moldes").unwrap();
+        assert_eq!(rename_entry_in(&root, "Ropa/Moldes", "Patrones").unwrap(), "Ropa/Patrones");
+    }
+
+    #[test]
+    fn rename_collision_gets_suffix_and_same_name_is_noop() {
+        let (_d, root) = ws();
+        create_space_in(&root, "Ropa").unwrap();
+        create_page_in(&root, "Ropa", "A").unwrap();
+        create_page_in(&root, "Ropa", "B").unwrap();
+        assert_eq!(rename_entry_in(&root, "Ropa/B.md", "A").unwrap(), "Ropa/A 2.md");
+        assert_eq!(rename_entry_in(&root, "Ropa/A.md", "A").unwrap(), "Ropa/A.md");
+        assert!(rename_entry_in(&root, "", "x").is_err());
+        assert!(rename_entry_in(&root, "Ropa/nada.md", "x").is_err());
+    }
+
+    #[test]
+    fn write_then_read_roundtrip() {
+        let (_d, root) = ws();
+        create_space_in(&root, "Ropa").unwrap();
+        let text = "# Diseño otoño\n\n| a | b |\n|---|---|\n| 1 | ñ |\n";
+        write_text_in(&root, "Ropa/Diseño otoño.md", text).unwrap();
+        assert_eq!(read_text_in(&root, "Ropa/Diseño otoño.md").unwrap(), text);
+        write_text_in(&root, "Ropa/Diseño otoño.md", "nuevo").unwrap();
+        assert_eq!(read_text_in(&root, "Ropa/Diseño otoño.md").unwrap(), "nuevo");
+        // no temp files left behind
+        let n = fs::read_dir(root.join("Ropa")).unwrap().count();
+        assert_eq!(n, 3); // CLAUDE.md, adjuntos, the page
+    }
+
+    #[test]
+    fn read_write_reject_dirs_and_missing_parent() {
+        let (_d, root) = ws();
+        create_space_in(&root, "Ropa").unwrap();
+        assert!(read_text_in(&root, "Ropa").is_err());
+        assert!(read_text_in(&root, "Ropa/nada.md").is_err());
+        assert!(write_text_in(&root, "Ropa", "x").is_err());
+        assert!(write_text_in(&root, "Falta/x.md", "x").is_err());
+        assert!(write_text_in(&root, "../x.md", "x").is_err());
+    }
+
+    #[test]
+    fn save_attachment_lands_in_adjuntos() {
+        let (_d, root) = ws();
+        create_space_in(&root, "Ropa").unwrap();
+        let a = save_attachment_in(&root, "Ropa", "foto ñ.png", &[1, 2, 3]).unwrap();
+        assert_eq!(a, "Ropa/adjuntos/foto ñ.png");
+        assert_eq!(fs::read(root.join(&a)).unwrap(), [1, 2, 3]);
+        assert_eq!(save_attachment_in(&root, "Ropa", "foto ñ.png", &[9]).unwrap(), "Ropa/adjuntos/foto ñ 2.png");
+        assert!(save_attachment_in(&root, "Ropa", "../x.png", &[]).is_err());
+        assert!(save_attachment_in(&root, "Nada", "x.png", &[]).is_err());
+        assert!(save_attachment_in(&root, "..", "x.png", &[]).is_err());
+    }
+
+    #[test]
+    fn import_files_copies_into_adjuntos() {
+        let (d, root) = ws();
+        create_space_in(&root, "Ropa").unwrap();
+        let src = d.path().join("tela.jpg");
+        fs::write(&src, "img").unwrap();
+        let got = import_files_in(&root, "Ropa", &[src.to_string_lossy().into()]).unwrap();
+        assert_eq!(got, ["Ropa/adjuntos/tela.jpg"]);
+        // dest_dir may be any path inside the space: the space is its first segment
+        let got = import_files_in(&root, "Ropa/Sub", &[src.to_string_lossy().into()]).unwrap();
+        assert_eq!(got, ["Ropa/adjuntos/tela 2.jpg"]);
+        assert!(import_files_in(&root, "Nada", &[src.to_string_lossy().into()]).is_err());
+    }
+
+    #[test]
+    fn import_files_rejects_relative_and_dirs() {
+        let (d, root) = ws();
+        create_space_in(&root, "Ropa").unwrap();
+        assert!(import_files_in(&root, "Ropa", &["rel.png".into()]).is_err());
+        assert!(import_files_in(&root, "Ropa", &[d.path().to_string_lossy().into()]).is_err());
+    }
+
+    #[test]
+    fn delete_calls_trasher_with_resolved_path_only_inside_root() {
+        let (_d, root) = ws();
+        create_space_in(&root, "Ropa").unwrap();
+        let page = create_page_in(&root, "Ropa", "Notas").unwrap();
+        let seen = std::cell::RefCell::new(Vec::new());
+        delete_entry_with(&root, &page, |p| {
+            seen.borrow_mut().push(p.to_path_buf());
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(seen.borrow().len(), 1);
+        assert!(seen.borrow()[0].ends_with("Ropa/Notas.md"));
+        for bad in ["", "../x", "/etc/hosts", "Ropa/nada.md"] {
+            let r = delete_entry_with(&root, bad, |_| panic!("must not trash {bad:?}"));
+            assert!(r.is_err(), "{bad:?}");
+        }
+    }
+}
