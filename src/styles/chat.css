@@ -1,0 +1,327 @@
+/* Chat panel body. Tokens only. */
+.chat {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.chat-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex: none;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+.chat-space {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+.chat-toolbar .btn {
+  height: 24px;
+  padding: 0 var(--space-3);
+  font-size: var(--text-sm);
+  flex: none;
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.btn:disabled:hover {
+  background: var(--bg-raised);
+}
+.btn-primary:disabled:hover {
+  background: var(--accent);
+  filter: none;
+}
+
+.chat-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.chat-hint {
+  margin: 0;
+  color: var(--text-muted);
+}
+.chat-status {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  animation: chat-pulse 1.4s ease-in-out infinite;
+}
+@keyframes chat-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+/* messages */
+.msg p {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.msg-user {
+  align-self: flex-end;
+  max-width: 90%;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--bg-selected);
+}
+.msg-attachments {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-2) 0 0;
+  padding: 0;
+}
+.msg-assistant {
+  min-width: 0;
+}
+.msg-error,
+.msg-notice {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+.msg-error {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+.msg-notice {
+  background: var(--info-bg);
+  color: var(--text-muted);
+}
+
+/* the live trail of steps */
+.step {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--row-h);
+  width: 100%;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  text-align: left;
+}
+.step-link {
+  cursor: pointer;
+}
+.step-link:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.step-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.step-link .step-label {
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 2px;
+}
+.step-icon {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+.step-icon[data-status="running"] {
+  width: 10px;
+  height: 10px;
+  background: none;
+  border: 1.5px solid var(--border-strong);
+  border-top-color: var(--accent);
+  animation: chat-spin 0.8s linear infinite;
+}
+.step-icon[data-status="error"],
+.step-icon[data-status="stopped"] {
+  background: none;
+  border: 1.5px solid var(--text-faint);
+}
+@keyframes chat-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.step-mark {
+  flex: none;
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+}
+
+/* assistant markdown */
+.chat-md {
+  overflow-wrap: anywhere;
+}
+.chat-md > :first-child {
+  margin-top: 0;
+}
+.chat-md > :last-child {
+  margin-bottom: 0;
+}
+.chat-md p,
+.chat-md ul,
+.chat-md ol,
+.chat-md pre,
+.chat-md blockquote {
+  margin: 0 0 var(--space-3);
+}
+.chat-md h1,
+.chat-md h2,
+.chat-md h3,
+.chat-md h4 {
+  margin: var(--space-4) 0 var(--space-3);
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+.chat-md ul,
+.chat-md ol {
+  padding-left: var(--space-6);
+}
+.chat-md a {
+  color: var(--accent);
+  cursor: pointer;
+}
+.chat-md code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--bg-hover);
+}
+.chat-md pre {
+  overflow-x: auto;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--bg-side);
+}
+.chat-md pre code {
+  padding: 0;
+  background: none;
+}
+.chat-md blockquote {
+  padding-left: var(--space-4);
+  border-left: 3px solid var(--border-strong);
+  color: var(--text-muted);
+}
+.chat-md hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: var(--space-4) 0;
+}
+.chat-md table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 0 0 var(--space-3);
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+.chat-md th,
+.chat-md td {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  text-align: left;
+}
+.chat-md th {
+  background: var(--bg-side);
+  font-weight: 600;
+}
+.chat-md-img {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.chat-banner {
+  flex: none;
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  background: var(--danger-bg);
+  color: var(--danger);
+  font-size: var(--text-sm);
+}
+
+/* composer */
+.composer {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4) var(--space-4);
+  border-top: 1px solid var(--border);
+}
+.composer-input {
+  width: 100%;
+  min-height: 52px;
+  max-height: 200px;
+  resize: vertical;
+  padding: var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--bg-raised);
+  font: inherit;
+  color: inherit;
+}
+.composer-bar {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.composer-chips {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+}
+.composer-problem {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--danger);
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 100%;
+  padding: 0 var(--space-3);
+  height: 22px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--bg-raised);
+  font-size: var(--text-sm);
+}
+.chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chip-link:hover {
+  background: var(--bg-hover);
+}
+.chip-remove {
+  color: var(--text-muted);
+  line-height: 1;
+}
+.chip-remove:hover {
+  color: var(--text);
+}
