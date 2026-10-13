@@ -1,12 +1,13 @@
 import { kindOf } from "../../lib/paths";
 import { useApp } from "../../store/app";
+import { FileFallback } from "../viewer/FileFallback";
+import { HtmlViewer } from "../viewer/HtmlViewer";
+import { ImageViewer } from "../viewer/ImageViewer";
 import { MarkdownEditor } from "./Editor";
 
 /**
- * Middle pane. The markdown branch is the Tiptap editor (Task 5); Task 6 replaces
- * the html/image/other placeholders with the viewers.
- * Read `openPath` (workspace-relative) from the store; use `kindOf(openPath)` to
- * pick the renderer; watch `fsChange` to react to disk changes. Keep the empty state.
+ * Middle pane: picks the renderer for `openPath` (workspace-relative) by file kind.
+ * Each renderer is keyed by path so switching files never reuses state.
  */
 export function DocumentPane() {
   const openPath = useApp((s) => s.openPath);
@@ -25,12 +26,14 @@ export function DocumentPane() {
     );
   }
 
-  if (kindOf(openPath) === "markdown") return <MarkdownEditor key={openPath} path={openPath} />;
-
-  return (
-    <div className="empty" data-testid="document-placeholder" data-kind={kindOf(openPath)}>
-      <h2>{openPath}</h2>
-      <p>Aquí irá el visor de este archivo ({kindOf(openPath)}).</p>
-    </div>
-  );
+  switch (kindOf(openPath)) {
+    case "markdown":
+      return <MarkdownEditor key={openPath} path={openPath} />;
+    case "html":
+      return <HtmlViewer key={openPath} path={openPath} />;
+    case "image":
+      return <ImageViewer key={openPath} path={openPath} />;
+    default:
+      return <FileFallback key={openPath} path={openPath} />;
+  }
 }

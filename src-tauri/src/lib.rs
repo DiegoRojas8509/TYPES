@@ -20,6 +20,7 @@ pub fn run() {
             if let Err(e) = workspace::ensure_root(&settings.workspace_root) {
                 eprintln!("could not prepare workspace root: {e}");
             }
+            settings::grant_asset_scope(app.handle(), &settings.workspace_root);
             app.manage(settings::AppState::new(config_file, settings));
             app.manage(watcher::WatcherSlot::default());
             app.manage(claude::ClaudeState::default());

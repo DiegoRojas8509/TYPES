@@ -2,7 +2,7 @@ use crate::error::{AppError, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -86,6 +86,23 @@ pub fn set_workspace_root_in(state: &AppState, path: String) -> Result<Settings>
     state.update(|s| s.workspace_root = p)
 }
 
+/// Lets the asset protocol serve files under the workspace root, and only there
+/// (the static scope in `tauri.conf.json` is empty). Called at startup and
+/// whenever the root changes. Grants cannot be revoked at runtime, so a root
+/// used earlier in the same session stays readable until the app restarts.
+pub fn grant_asset_scope(app: &AppHandle, root: &Path) {
+    let scope = app.asset_protocol_scope();
+    if let Err(e) = scope.allow_directory(root, true) {
+        eprintln!("could not allow asset scope for {}: {e}", root.display());
+    }
+    // The protocol matches against the real path, so cover symlinked roots too.
+    if let Ok(real) = root.canonicalize()
+        && real != root
+    {
+        let _ = scope.allow_directory(&real, true);
+    }
+}
+
 #[tauri::command]
 pub fn get_settings(state: State<AppState>) -> Settings {
     state.snapshot()
@@ -94,6 +111,7 @@ pub fn get_settings(state: State<AppState>) -> Settings {
 #[tauri::command]
 pub fn set_workspace_root(app: AppHandle, state: State<AppState>, path: String) -> Result<Settings> {
     let settings = set_workspace_root_in(&state, path)?;
+    grant_asset_scope(&app, &settings.workspace_root);
     crate::watcher::restart(&app);
     Ok(settings)
 }

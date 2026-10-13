@@ -2,6 +2,7 @@
 // talks to Rust through the typed wrappers below.
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { openPath } from "@tauri-apps/plugin-opener";
 
 export interface Settings {
   workspaceRoot: string;
@@ -88,6 +89,11 @@ export const api = {
 /** URL the webview can load for an absolute path (needs the asset protocol enabled). */
 export function assetUrl(absolutePath: string): string {
   return convertFileSrc(absolutePath);
+}
+
+/** Opens a file with the macOS default app (for .html that is normally the browser). */
+export function openWithDefaultApp(absolutePath: string): Promise<void> {
+  return openPath(absolutePath);
 }
 
 export function onFsChanged(cb: (payload: FsChangedPayload) => void): Promise<UnlistenFn> {

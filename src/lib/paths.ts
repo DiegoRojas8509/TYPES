@@ -34,6 +34,11 @@ export function kindOf(path: string): FileKind {
   return "other";
 }
 
+/** Absolute path of a workspace-relative path. */
+export function absolutePath(workspaceRoot: string, rel: string): string {
+  return `${workspaceRoot.replace(/\/+$/, "")}/${rel}`;
+}
+
 export function joinRel(dir: string, name: string): string {
   return dir ? `${dir}/${name}` : name;
 }
