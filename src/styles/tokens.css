@@ -28,24 +28,26 @@
 
   /* surfaces */
   --bg: #ffffff;
-  --bg-side: #f7f7f5;
+  --bg-side: #f8f6f3;
   --bg-raised: #ffffff;
   --bg-hover: rgba(55, 53, 47, 0.07);
   --bg-selected: rgba(55, 53, 47, 0.12);
-  --border: #e6e5e1;
-  --border-strong: #cfcdc7;
+  --border: #e7e4de;
+  --border-strong: #d2cec6;
 
   /* text */
   --text: #37352f;
   --text-muted: #787774;
   --text-faint: #a5a39d;
 
-  /* accents */
-  --accent: #2f6fb5;
-  --accent-text: #ffffff;
+  /* accents: burnt orange from the app icon. --accent is a FILL (buttons, bars,
+     focus rings); --accent-ink is the same family darkened so it passes 4.5:1 as TEXT. */
+  --accent: #e0762a;
+  --accent-ink: #b2591a;
+  --accent-text: #1a1411;
   --danger: #c4392d;
   --danger-bg: #fdecea;
-  --info-bg: #eef3f9;
+  --info-bg: #fbf1e6;
 
   --shadow-pop: 0 4px 18px rgba(15, 15, 15, 0.14), 0 0 0 1px rgba(15, 15, 15, 0.06);
   --scrim: rgba(15, 15, 15, 0.32);
@@ -53,23 +55,24 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #191919;
-    --bg-side: #202020;
-    --bg-raised: #252525;
+    --bg: #1a1816;
+    --bg-side: #211e1b;
+    --bg-raised: #262321;
     --bg-hover: rgba(255, 255, 255, 0.07);
     --bg-selected: rgba(255, 255, 255, 0.13);
-    --border: #2f2f2f;
-    --border-strong: #454545;
+    --border: #322e2b;
+    --border-strong: #474240;
 
     --text: #e6e5e1;
     --text-muted: #9b9a96;
     --text-faint: #6f6e6a;
 
-    --accent: #5a9bdc;
-    --accent-text: #0d1b2a;
+    --accent: #e0762a;
+    --accent-ink: #f0a050;
+    --accent-text: #1a1411;
     --danger: #f0867b;
     --danger-bg: #3a2220;
-    --info-bg: #222c37;
+    --info-bg: #2d2219;
 
     --shadow-pop: 0 4px 18px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.08);
     --scrim: rgba(0, 0, 0, 0.55);

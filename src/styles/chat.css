@@ -204,7 +204,7 @@
   padding-left: var(--space-6);
 }
 .chat-md a {
-  color: var(--accent);
+  color: var(--accent-ink);
   cursor: pointer;
 }
 .chat-md code {
