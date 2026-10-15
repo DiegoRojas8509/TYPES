@@ -14,16 +14,14 @@ import {
   type Connection,
   type EdgeChange,
   type NodeChange,
-  type NodeTypes,
 } from "@xyflow/react";
 import { mergeCanvasText, newId, parseCanvas, serializeCanvas, type CanvasNode } from "../../lib/canvas";
 import { titleOf } from "../../lib/paths";
 import { useDocument, type DocStatus } from "../editor/useDocument";
 import { defaultNode, type BlockKind } from "./addMenu";
 import { BlockMenu } from "./BlockMenu";
-import { BoardActionsContext, type BoardActions } from "./boardActions";
+import { BoardActionsContext, BoardContext, type BoardActions } from "./boardActions";
 import {
-  FALLBACK_TYPE,
   fromFlow,
   isUserEdit,
   patchFlowNode,
@@ -35,12 +33,9 @@ import {
   type FlowEdge,
   type FlowNode,
 } from "./boardModel";
-import { FallbackNode } from "./FallbackNode";
-import { nodeTypes } from "./nodes";
+import { flowNodeTypes, nodeTypes } from "./nodes";
 import { useBoardImages } from "./useBoardImages";
 
-// Module level: React Flow needs a stable identity for `nodeTypes`.
-const NODE_TYPES: NodeTypes = { ...nodeTypes, [FALLBACK_TYPE]: FallbackNode };
 const isKnown = (type: string) => Object.prototype.hasOwnProperty.call(nodeTypes, type);
 const DELETE_KEYS = ["Backspace", "Delete"];
 const FIT_VIEW = { padding: 0.2, maxZoom: 1 };
@@ -59,9 +54,12 @@ type MenuState = { left: number; top: number; flow: { x: number; y: number }; ce
 
 /** `.canvas` whiteboard: React Flow on top of `useDocument`. Mount with `key={path}`. */
 export function BoardView({ path }: { path: string }) {
+  const info = useMemo(() => ({ boardPath: path }), [path]);
   return (
     <ReactFlowProvider>
-      <Board path={path} />
+      <BoardContext.Provider value={info}>
+        <Board path={path} />
+      </BoardContext.Provider>
     </ReactFlowProvider>
   );
 }
@@ -291,7 +289,7 @@ function Board({ path }: { path: string }) {
             <ReactFlow<FlowNode, FlowEdge>
               nodes={nodes}
               edges={shown}
-              nodeTypes={NODE_TYPES}
+              nodeTypes={flowNodeTypes}
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
               onConnect={onConnect}

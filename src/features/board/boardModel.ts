@@ -20,6 +20,9 @@ export function toFlowNode(n: CanvasNode, isKnown: (type: string) => boolean): F
     height: n.height,
     // Zones sit behind the blocks they group.
     zIndex: n.type === "group" ? 0 : 1,
+    // A zone is big and mostly empty: only its label bar drags it, so dragging
+    // inside it pans the board like any empty area.
+    ...(n.type === "group" ? { dragHandle: ".zone-head" } : {}),
     data: n,
   };
 }

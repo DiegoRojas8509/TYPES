@@ -75,28 +75,6 @@
 .board .react-flow__controls-button svg {
   fill: currentColor;
 }
-.board .react-flow__node.selectable:focus-visible,
-.board .react-flow__node.selected {
-  outline: 1px solid var(--accent);
-  outline-offset: 1px;
-}
-
-/* Fallback card for node types without a block component. */
-.board-fallback {
-  display: grid;
-  place-content: center;
-  width: 100%;
-  height: 100%;
-  border: 1px dashed var(--border-strong);
-  border-radius: var(--radius-md);
-  background: var(--bg-raised);
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-}
-.board-fallback-type {
-  font-family: var(--font-mono);
-}
-
 /* Block menu. */
 .board-menu {
   position: absolute;

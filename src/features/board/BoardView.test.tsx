@@ -6,6 +6,7 @@ vi.mock("../../lib/api", async (importOriginal) => {
   return {
     ...actual,
     api: { ...actual.api, readText: vi.fn(), writeText: vi.fn(), saveAttachment: vi.fn() },
+    assetUrl: (p: string) => `asset://localhost/${encodeURIComponent(p)}`,
   };
 });
 
@@ -122,6 +123,39 @@ describe("BoardView (mounted under jsdom)", () => {
     expect(parsed.doc.nodes).toHaveLength(2);
     expect(parsed.doc.nodes.find((n) => n.id === "a")).toMatchObject({ type: "raro", x: 5, y: 6, foo: { bar: 1 } });
     expect(parsed.doc.edges).toEqual([{ id: "e1", fromNode: "a", toNode: "ghost", label: "x" }]);
+  });
+
+  it("renders one block of each kind (note, image, zone, unknown) without throwing", async () => {
+    const raw = JSON.stringify({
+      nodes: [
+        { id: "z", type: "group", x: 0, y: 0, width: 600, height: 400, label: "Telas" },
+        { id: "n", type: "text", x: 20, y: 40, width: 260, height: 160, text: "# Cotización\n\nLino 120 por metro", color: "2" },
+        { id: "i", type: "file", x: 300, y: 40, width: 260, height: 160, file: "adjuntos/lino.png" },
+        { id: "u", type: "raro", x: 20, y: 220, width: 260, height: 100, foo: 1 },
+      ],
+      edges: [],
+    });
+    const { container, unmount } = await open(raw);
+    expect((container.querySelector("input.zone-label") as HTMLInputElement).value).toBe("Telas");
+    expect(container.querySelector(".block-title")?.textContent).toBe("Cotización");
+    expect(container.querySelector("img")?.getAttribute("src")).toBe(
+      `asset://localhost/${encodeURIComponent("/Users/d/TYPES-espacios/Ropa/adjuntos/lino.png")}`,
+    );
+    expect(container.querySelector(".block-unknown")?.textContent).toContain("«raro»");
+    await wait(AUTOSAVE_MS * 5);
+    unmount();
+    expect(api.writeText).not.toHaveBeenCalled();
+  });
+
+  it("editing a zone label from the board autosaves the new label and keeps other fields", async () => {
+    const raw = JSON.stringify({ nodes: [{ id: "z", type: "group", x: 1, y: 2, width: 600, height: 400, label: "Zona", extra: true }], edges: [] });
+    const { container } = await open(raw);
+    await act(async () => {
+      fireEvent.change(container.querySelector("input.zone-label") as HTMLInputElement, { target: { value: "Pedidos" } });
+    });
+    await wait(AUTOSAVE_MS);
+    const parsed = parseCanvas(vi.mocked(api.writeText).mock.calls[0][1]);
+    expect(parsed.ok && parsed.doc.nodes[0]).toMatchObject({ id: "z", label: "Pedidos", extra: true, x: 1, y: 2 });
   });
 
   it("a disk reload re-parses the board and is not treated as an edit", async () => {

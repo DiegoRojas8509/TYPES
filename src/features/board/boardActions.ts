@@ -12,3 +12,15 @@ export const BoardActionsContext = createContext<BoardActions>({ update() {} });
 export function useBoardActions(): BoardActions {
   return useContext(BoardActionsContext);
 }
+
+export interface BoardInfo {
+  /** Workspace-relative path of the open `.canvas` (blocks resolve relative files against its folder). */
+  boardPath: string;
+}
+
+export const BoardContext = createContext<BoardInfo>({ boardPath: "" });
+
+/** Facts about the board a block lives in. */
+export function useBoardContext(): BoardInfo {
+  return useContext(BoardContext);
+}

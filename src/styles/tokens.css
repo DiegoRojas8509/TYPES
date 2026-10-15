@@ -51,6 +51,17 @@
 
   --shadow-pop: 0 4px 18px rgba(15, 15, 15, 0.14), 0 0 0 1px rgba(15, 15, 15, 0.06);
   --scrim: rgba(15, 15, 15, 0.32);
+
+  /* whiteboard blocks: two-part shadows (tight edge + soft ambient), resting and selected */
+  --shadow-card: 0 1px 2px rgba(15, 15, 15, 0.07), 0 3px 10px rgba(15, 15, 15, 0.05);
+  --shadow-card-lift: 0 2px 4px rgba(15, 15, 15, 0.08), 0 10px 24px rgba(15, 15, 15, 0.1);
+  /* block accents = the JSON Canvas preset colours 1..6 (red, orange, yellow, green, cyan, purple) */
+  --block-1: #d4493b;
+  --block-2: #e0762a;
+  --block-3: #b8901a;
+  --block-4: #3f8f55;
+  --block-5: #2a8fa6;
+  --block-6: #8157c0;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -76,5 +87,14 @@
 
     --shadow-pop: 0 4px 18px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.08);
     --scrim: rgba(0, 0, 0, 0.55);
+
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.35), 0 3px 10px rgba(0, 0, 0, 0.25);
+    --shadow-card-lift: 0 2px 4px rgba(0, 0, 0, 0.4), 0 10px 24px rgba(0, 0, 0, 0.4);
+    --block-1: #f0867b;
+    --block-2: #f0a050;
+    --block-3: #e3c458;
+    --block-4: #7ac488;
+    --block-5: #62c3d6;
+    --block-6: #b494e6;
   }
 }

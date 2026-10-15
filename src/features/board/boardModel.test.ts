@@ -23,6 +23,15 @@ describe("boardModel", () => {
     expect(back.nodes[0]).toEqual(node);
   });
 
+  it("zones sit behind the blocks and only their label bar drags them", () => {
+    const zone = toFlowNode({ ...node, id: "z", type: "group", label: "Zona" }, all);
+    expect(zone.zIndex).toBeLessThan(toFlowNode(node, all).zIndex ?? 0);
+    expect(zone.dragHandle).toBe(".zone-head");
+    expect(toFlowNode(node, all).dragHandle).toBeUndefined();
+    // The handle is a view concern: it never reaches the file.
+    expect(fromFlow([zone], []).nodes[0]).not.toHaveProperty("dragHandle");
+  });
+
   it("unregistered types use the fallback renderer but keep their canvas type", () => {
     const f = toFlowNode(node, none);
     expect(f.type).toBe(FALLBACK_TYPE);
