@@ -8,6 +8,7 @@ vi.mock("../lib/api", () => ({
     listTree: vi.fn(),
     createSpace: vi.fn(),
     createPage: vi.fn(),
+    createBoard: vi.fn(),
     createFolder: vi.fn(),
     renameEntry: vi.fn(),
     deleteEntry: vi.fn(),
@@ -111,6 +112,16 @@ describe("store", () => {
     mocked.createPage.mockResolvedValue("Ropa/Nueva.md");
     await useApp.getState().createPage("Ropa", "Nueva");
     expect(useApp.getState().openPath).toBe("Ropa/Nueva.md");
+    expect(useApp.getState().expanded["Ropa"]).toBe(true);
+    expect(mocked.listTree).toHaveBeenCalled();
+  });
+
+  it("createBoard opens the new board and expands its folder", async () => {
+    mocked.createBoard.mockResolvedValue("Ropa/Plan.canvas");
+    const r = await useApp.getState().createBoard("Ropa", "Plan");
+    expect(r).toBe("Ropa/Plan.canvas");
+    expect(mocked.createBoard).toHaveBeenCalledWith("Ropa", "Plan");
+    expect(useApp.getState().openPath).toBe("Ropa/Plan.canvas");
     expect(useApp.getState().expanded["Ropa"]).toBe(true);
     expect(mocked.listTree).toHaveBeenCalled();
   });

@@ -11,6 +11,7 @@ vi.mock("../../lib/api", async (importOriginal) => {
   };
 });
 vi.mock("../editor/Editor", () => ({ MarkdownEditor: ({ path }: { path: string }) => <div>editor:{path}</div> }));
+vi.mock("../board/BoardView", () => ({ BoardView: ({ path }: { path: string }) => <div>board:{path}</div> }));
 
 import { api, openWithDefaultApp } from "../../lib/api";
 import { initialState, useApp } from "../../store/app";
@@ -54,6 +55,10 @@ describe("DocumentPane", () => {
     };
     let r = await show("Ropa/Notas.md");
     expect(screen.getByText("editor:Ropa/Notas.md")).toBeInTheDocument();
+    r.unmount();
+
+    r = await show("Ropa/Plan.canvas");
+    expect(screen.getByText("board:Ropa/Plan.canvas")).toBeInTheDocument();
     r.unmount();
 
     r = await show("Ropa/dash.html");

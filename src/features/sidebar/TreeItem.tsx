@@ -2,6 +2,7 @@ import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
 import type { TreeNode } from "../../lib/api";
 import { kindOf, titleOf } from "../../lib/paths";
 import {
+  IconBoard,
   IconChevron,
   IconCode,
   IconFolder,
@@ -19,14 +20,17 @@ export type Editing =
   | { kind: "create-folder"; dir: string }
   | { kind: "rename"; path: string };
 
-/** Markdown pages hide their extension; everything else shows its full name. */
+/** Markdown pages and boards hide their extension; everything else shows its full name. */
 export function displayName(node: TreeNode): string {
   return node.kind === "file" ? titleOf(node.path) : node.name;
 }
 
 function fileIcon(path: string): ReactNode {
   const k = kindOf(path);
-  return k === "image" ? <IconImage /> : k === "html" ? <IconCode /> : <IconPage />;
+  if (k === "image") return <IconImage />;
+  if (k === "html") return <IconCode />;
+  if (k === "canvas") return <IconBoard />;
+  return <IconPage />;
 }
 
 interface Props {
@@ -97,7 +101,7 @@ export function TreeItem(p: Props) {
         <span className="tree-actions">
           {isDir && (
             <>
-              <Action label={`Nueva página en ${name}`} onClick={p.onNewPage}>
+              <Action label={`Nueva pizarra en ${name}`} onClick={p.onNewPage}>
                 <IconPlus />
               </Action>
               <Action label={`Nueva carpeta en ${name}`} onClick={p.onNewFolder}>

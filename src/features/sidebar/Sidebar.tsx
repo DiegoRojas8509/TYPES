@@ -33,12 +33,12 @@ export function Sidebar() {
 
   function renderCreate(dir: string, depth: number) {
     if (!editing || editing.kind === "rename" || editing.kind === "create-space" || editing.dir !== dir) return null;
-    const isPage = editing.kind === "create-page";
+    const isBoard = editing.kind === "create-page";
     return (
       <div className="name-input-row" style={{ paddingLeft: 4 + depth * 14 + 16 }}>
         <NameInput
-          label={isPage ? "Nombre de la página" : "Nombre de la carpeta"}
-          onSubmit={(name) => done(isPage ? app().createPage(dir, name) : app().createFolder(dir, name))}
+          label={isBoard ? "Nombre de la pizarra" : "Nombre de la carpeta"}
+          onSubmit={(name) => done(isBoard ? app().createBoard(dir, name) : app().createFolder(dir, name))}
           onCancel={() => setEditing(null)}
         />
       </div>

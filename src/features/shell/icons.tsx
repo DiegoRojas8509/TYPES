@@ -34,6 +34,12 @@ export const IconPage = () => (
     <path d="M9 2v3h3" />
   </Svg>
 );
+export const IconBoard = () => (
+  <Svg>
+    <rect x="2" y="3" width="12" height="10" rx="1" />
+    <path d="M2 7h12M7 3v10" />
+  </Svg>
+);
 export const IconFolder = () => (
   <Svg>
     <path d="M2 4.5h4l1.5 1.5H14v6.5H2z" />

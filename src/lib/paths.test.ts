@@ -18,6 +18,8 @@ describe("paths", () => {
   it("kindOf classifies by extension", () => {
     expect(kindOf("a/b.md")).toBe("markdown");
     expect(kindOf("a/b.html")).toBe("html");
+    expect(kindOf("a/b.canvas")).toBe("canvas");
+    expect(kindOf("a/b.CANVAS")).toBe("canvas");
     expect(kindOf("a/b.png")).toBe("image");
     expect(kindOf("a/b.JPG")).toBe("image");
     expect(kindOf("a/b.csv")).toBe("other");
@@ -51,6 +53,7 @@ describe("titleOf", () => {
   it("drops the extension of Markdown pages only", () => {
     expect(titleOf("Ropa/Daring Martin.md")).toBe("Daring Martin");
     expect(titleOf("Ropa/Notas.markdown")).toBe("Notas");
+    expect(titleOf("Ropa/Plan.canvas")).toBe("Plan");
     expect(titleOf("Ropa/Dashboard.html")).toBe("Dashboard.html");
     expect(titleOf("Ropa/foto.png")).toBe("foto.png");
     expect(titleOf("CLAUDE.md")).toBe("CLAUDE");

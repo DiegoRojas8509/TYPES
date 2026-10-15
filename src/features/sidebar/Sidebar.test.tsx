@@ -8,6 +8,7 @@ vi.mock("../../lib/api", () => ({
     listTree: vi.fn().mockResolvedValue([]),
     createSpace: vi.fn(),
     createPage: vi.fn(),
+    createBoard: vi.fn(),
     createFolder: vi.fn(),
     renameEntry: vi.fn(),
     deleteEntry: vi.fn(),
@@ -30,6 +31,7 @@ const tree: TreeNode[] = [
       { name: "Telas", path: "Ropa/Telas", kind: "dir", children: [file("Ropa/Telas/Algodón.md")] },
       file("Ropa/Notas.md"),
       file("Ropa/Dashboard.html"),
+      file("Ropa/Plan.canvas"),
     ],
   },
 ];
@@ -79,6 +81,20 @@ describe("Sidebar", () => {
     expect(screen.getByText("Algodón")).toBeInTheDocument();
     expect(screen.getByText("Notas")).toBeInTheDocument();
     expect(screen.getByText("Dashboard.html")).toBeInTheDocument();
+    expect(screen.getByText("Plan")).toBeInTheDocument();
+  });
+
+  it("creates a board from the space's new-board button", async () => {
+    mocked.createBoard.mockResolvedValue("Ropa/Ideas.canvas");
+    useApp.setState({ tree, treeLoaded: true, expanded: { Ropa: true } });
+    render(<Sidebar />);
+    expect(screen.queryByRole("button", { name: "Nueva página en Ropa" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Nueva pizarra en Ropa" }));
+    const input = screen.getByRole("textbox", { name: "Nombre de la pizarra" });
+    fireEvent.change(input, { target: { value: "Ideas" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await vi.waitFor(() => expect(mocked.createBoard).toHaveBeenCalledWith("Ropa", "Ideas"));
+    expect(mocked.createPage).not.toHaveBeenCalled();
   });
 
   it("hides children of collapsed folders", () => {

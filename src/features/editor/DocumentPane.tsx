@@ -1,5 +1,6 @@
 import { kindOf } from "../../lib/paths";
 import { useApp } from "../../store/app";
+import { BoardView } from "../board/BoardView";
 import { FileFallback } from "../viewer/FileFallback";
 import { HtmlViewer } from "../viewer/HtmlViewer";
 import { ImageViewer } from "../viewer/ImageViewer";
@@ -29,6 +30,8 @@ export function DocumentPane() {
   switch (kindOf(openPath)) {
     case "markdown":
       return <MarkdownEditor key={openPath} path={openPath} />;
+    case "canvas":
+      return <BoardView key={openPath} path={openPath} />;
     case "html":
       return <HtmlViewer key={openPath} path={openPath} />;
     case "image":

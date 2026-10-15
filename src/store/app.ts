@@ -42,6 +42,7 @@ export interface AppState {
   /** Each mutation returns the resulting path (or null if it failed; the error is shown). */
   createSpace(name: string): Promise<string | null>;
   createPage(dir: string, name: string): Promise<string | null>;
+  createBoard(dir: string, name: string): Promise<string | null>;
   createFolder(dir: string, name: string): Promise<string | null>;
   renameEntry(path: string, newName: string): Promise<string | null>;
   deleteEntry(path: string): Promise<boolean>;
@@ -142,6 +143,15 @@ export const useApp = create<AppState>()((set, get) => {
 
     async createPage(dir, name) {
       const path = await attempt(() => api.createPage(dir, name));
+      if (path === undefined) return null;
+      if (dir) get().setExpanded(dir, true);
+      get().open(path);
+      await get().refreshTree();
+      return path;
+    },
+
+    async createBoard(dir, name) {
+      const path = await attempt(() => api.createBoard(dir, name));
       if (path === undefined) return null;
       if (dir) get().setExpanded(dir, true);
       get().open(path);

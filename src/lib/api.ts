@@ -69,6 +69,8 @@ export const api = {
   /** Each create/rename returns the final relative path (names are de-duplicated). */
   createSpace: (name: string) => invoke<string>("create_space", { name }),
   createPage: (dir: string, name: string) => invoke<string>("create_page", { dir, name }),
+  /** Creates `<name>.canvas` in `dir` and returns its relative path. */
+  createBoard: (dir: string, name: string) => invoke<string>("create_board", { dir, name }),
   createFolder: (dir: string, name: string) => invoke<string>("create_folder", { dir, name }),
   renameEntry: (path: string, newName: string) => invoke<string>("rename_entry", { path, newName }),
   deleteEntry: (path: string) => invoke<void>("delete_entry", { path }),

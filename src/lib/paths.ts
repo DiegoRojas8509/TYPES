@@ -1,6 +1,6 @@
 // Helpers for workspace-relative paths ("Ropa/Telas/Algodón.md", '/' separated).
 
-export type FileKind = "markdown" | "html" | "image" | "other";
+export type FileKind = "markdown" | "canvas" | "html" | "image" | "other";
 
 const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "avif", "bmp"]);
 
@@ -8,10 +8,13 @@ export function baseName(path: string): string {
   return path.slice(path.lastIndexOf("/") + 1);
 }
 
-/** What Diego sees: Markdown pages drop their extension, every other file keeps its full name. */
+/** What Diego sees: Markdown pages and boards drop their extension, every other file keeps its full name. */
 export function titleOf(path: string): string {
   const name = baseName(path);
-  return kindOf(path) === "markdown" ? name.replace(/\.(md|markdown)$/i, "") : name;
+  const kind = kindOf(path);
+  if (kind === "markdown") return name.replace(/\.(md|markdown)$/i, "");
+  if (kind === "canvas") return name.replace(/\.canvas$/i, "");
+  return name;
 }
 
 export function parentOf(path: string): string {
@@ -35,6 +38,7 @@ export function extOf(path: string): string {
 export function kindOf(path: string): FileKind {
   const ext = extOf(path);
   if (ext === "md" || ext === "markdown") return "markdown";
+  if (ext === "canvas") return "canvas";
   if (ext === "html" || ext === "htm") return "html";
   if (IMAGE_EXTS.has(ext)) return "image";
   return "other";
