@@ -1,6 +1,6 @@
 // Pure helpers for the Markdown editor: image path mapping and a check for
 // syntax the editor cannot round-trip. No Tiptap here, so they test cheaply.
-import { parentOf } from "../../lib/paths";
+import { parentOf } from "./paths";
 
 const ABSOLUTE_URL = /^([a-z][a-z0-9+.-]*:|\/\/|#)/i;
 

@@ -4,8 +4,8 @@ import type { Editor as TiptapEditor } from "@tiptap/core";
 import { api, assetUrl, errorMessage } from "../../lib/api";
 import { spaceOf, titleOf } from "../../lib/paths";
 import { useApp } from "../../store/app";
-import { createExtensions } from "./extensions";
-import { pathFromAssetUrl, relativeSrc, resolveImageSrc, unresolveImageSrc, unsupportedSyntax } from "./markdown";
+import { createExtensions } from "../../lib/extensions";
+import { pathFromAssetUrl, relativeSrc, resolveImageSrc, unresolveImageSrc, unsupportedSyntax } from "../../lib/markdown";
 import { SlashCommand } from "./slash";
 import { useDocument, type DocStatus, type UseDocument } from "./useDocument";
 

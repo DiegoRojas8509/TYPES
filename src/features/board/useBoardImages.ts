@@ -8,7 +8,7 @@ import { api, errorMessage } from "../../lib/api";
 import type { CanvasNode } from "../../lib/canvas";
 import { spaceOf } from "../../lib/paths";
 import { useApp } from "../../store/app";
-import { relativeSrc } from "../editor/markdown";
+import { relativeSrc } from "../../lib/markdown";
 import { defaultNode } from "./addMenu";
 import { whole } from "./boardModel";
 
