@@ -357,6 +357,58 @@ describe("useDocument", () => {
       expect(result.current.status).toBe("conflict");
     });
 
+    it("a_throwing_merge_degrades_to_conflict_and_never_overwrites_the_disk", async () => {
+      const merge = vi.fn<MergeFn>(() => {
+        throw new Error("boom");
+      });
+      const { result } = await open(PATH, merge);
+      act(() => result.current.onChange("mi texto"));
+      disk = "texto de Claude";
+      await fsChanged(PATH);
+      expect(merge).toHaveBeenCalledTimes(1);
+      expect(result.current.status).toBe("conflict");
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(AUTOSAVE_MS * 5);
+      });
+      expect(writeText).not.toHaveBeenCalled();
+      expect(disk).toBe("texto de Claude");
+    });
+
+    it("merge_equal_to_my_current_text_does_not_reset_the_editor_but_still_saves", async () => {
+      const merge = vi.fn<MergeFn>((_b, mine) => ({ ok: true, text: mine }));
+      const { result } = await open(PATH, merge);
+      act(() => result.current.onChange("mi texto"));
+      const rev = result.current.revision;
+      const content = result.current.content;
+      disk = "texto de Claude";
+      await fsChanged(PATH);
+      expect(result.current.revision).toBe(rev);
+      expect(result.current.content).toBe(content);
+      expect(result.current.status).toBe("dirty");
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(AUTOSAVE_MS);
+      });
+      expect(writeText).toHaveBeenCalledWith(PATH, "mi texto");
+      expect(result.current.status).toBe("clean");
+    });
+
+    it("echo_of_the_merged_write_neither_bumps_revision_nor_merges_again", async () => {
+      const merge = vi.fn<MergeFn>(() => ({ ok: true, text: "M" }));
+      const { result } = await open(PATH, merge);
+      act(() => result.current.onChange("mi texto"));
+      disk = "texto de Claude";
+      await fsChanged(PATH);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(AUTOSAVE_MS);
+      });
+      expect(disk).toBe("M");
+      const rev = result.current.revision;
+      await fsChanged(PATH);
+      expect(result.current.revision).toBe(rev);
+      expect(result.current.status).toBe("clean");
+      expect(merge).toHaveBeenCalledTimes(1);
+    });
+
     it("a_new_merge_function_identity_each_render_does_not_reload_the_file", async () => {
       const { rerender } = renderHook(() => useDocument(PATH, () => ({ ok: false })));
       await act(async () => {

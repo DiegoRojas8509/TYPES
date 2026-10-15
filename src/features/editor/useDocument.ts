@@ -191,7 +191,13 @@ export class DocumentController {
     // while a write is in flight (the disk text could be our own write, and
     // merging could drop either side) or when already in conflict.
     if (this.merge && !this.inFlight && !this.conflict && this.mine !== null && this.lastSaved !== null) {
-      const merged = this.merge(this.lastSaved, this.mine, text);
+      const previousMine = this.mine;
+      let merged: ReturnType<MergeFn>;
+      try {
+        merged = this.merge(this.lastSaved, previousMine, text);
+      } catch {
+        merged = { ok: false }; // a throwing merge is a failed merge: fall through to conflict
+      }
       if (merged.ok) {
         this.lastSaved = text;
         this.mine = merged.text;
@@ -203,7 +209,11 @@ export class DocumentController {
           this.latest = merged.text;
           this.timer = setTimeout(() => void this.save(), AUTOSAVE_MS);
         }
-        this.emit({ content: merged.text, revision: this.snap.revision + 1, error: null });
+        if (merged.text === previousMine && merged.text !== text) {
+          this.emit(); // the editor already shows this text: don't reset it
+        } else {
+          this.emit({ content: merged.text, revision: this.snap.revision + 1, error: null });
+        }
         return;
       }
     }
