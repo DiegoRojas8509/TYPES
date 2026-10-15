@@ -189,6 +189,62 @@ describe("NoteNode", () => {
     expect(prose(container).textContent).not.toContain("Claude cambió esto");
   });
 
+  it("entering and leaving edit mode without typing never calls update (blur and Escape)", () => {
+    const { container } = render(board(note("# A\n\n- uno\n* dos")));
+    const body = container.querySelector(".note-body") as HTMLElement;
+    fireEvent.doubleClick(body);
+    expect(prose(container)).toHaveAttribute("contenteditable", "true");
+    fireEvent.blur(prose(container));
+    expect(prose(container)).toHaveAttribute("contenteditable", "false");
+    fireEvent.doubleClick(body);
+    expect(prose(container)).toHaveAttribute("contenteditable", "true");
+    fireEvent.keyDown(prose(container), { key: "Escape" });
+    expect(prose(container)).toHaveAttribute("contenteditable", "false");
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("merely selecting a note never calls update", () => {
+    const { container, rerender } = render(board(note("# A\n\nhola")));
+    rerender(board(note("# A\n\nhola"), true));
+    fireEvent.pointerDown(container.querySelector(".note-body") as HTMLElement);
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  describe.each([
+    ["an HTML comment", "# A\n\ntexto <!-- x -->\n"],
+    ["a footnote", "# A\n\ntexto[^1]\n\n[^1]: nota\n"],
+    ["YAML front matter", "---\ntitulo: x\n---\n\n# A\n"],
+    ["an HTML block", "# A\n\n<div>hola</div>\n"],
+  ])("a note with %s", (_label, text) => {
+    // The comment case must be a real comment line for the detector; keep the raw text as written.
+    const risky = text.includes("<!--") ? "# A\n\n<!-- x -->\n\ntexto\n" : text;
+
+    it("is shown read-only with a notice and never starts editing", () => {
+      const { container, getByText } = render(board(note(risky), true));
+      expect(getByText(/que el editor no puede conservar/)).toBeInTheDocument();
+      const body = container.querySelector(".note-body") as HTMLElement;
+      fireEvent.doubleClick(body);
+      fireEvent.pointerDown(body);
+      fireEvent.click(body);
+      expect(prose(container)).toHaveAttribute("contenteditable", "false");
+      expect(body.className).not.toContain("nodrag");
+      expect(update).not.toHaveBeenCalled();
+    });
+  });
+
+  it("re-evaluates the check on the current text: a plain note edits, one that gains a comment locks", () => {
+    const { container, rerender, queryByText } = render(board(note("# A\n\nhola")));
+    expect(queryByText(/que el editor no puede conservar/)).toBeNull();
+    rerender(board(note("# A\n\nhola\n\n<!-- de Claude -->\n")));
+    expect(queryByText(/que el editor no puede conservar/)).not.toBeNull();
+    fireEvent.doubleClick(container.querySelector(".note-body") as HTMLElement);
+    expect(prose(container)).toHaveAttribute("contenteditable", "false");
+    rerender(board(note("# A\n\nhola de nuevo")));
+    expect(queryByText(/que el editor no puede conservar/)).toBeNull();
+    fireEvent.doubleClick(container.querySelector(".note-body") as HTMLElement);
+    expect(prose(container)).toHaveAttribute("contenteditable", "true");
+  });
+
   it("applies the accent colour of the node", () => {
     const { container } = render(board(note("# A", { color: "5" })));
     expect(container.querySelector(".block")).toHaveAttribute("data-accent", "5");
@@ -218,6 +274,20 @@ describe("ImageNode", () => {
     expect(getByText("No encuentro la imagen")).toBeInTheDocument();
     expect(container.querySelector(".image-missing")?.textContent).toContain("a.png");
     expect(container.querySelector("img")).toBeNull();
+  });
+
+  it.each([
+    ["a path that leaves the workspace", "../../../etc/x"],
+    ["an absolute path", "/etc/x"],
+    ["an http URL", "http://example.com/a.png"],
+    ["an https URL", "https://example.com/a.png"],
+    ["a data URL", "data:image/png;base64,AAAA"],
+    ["a javascript URL", "javascript:alert(1)"],
+  ])("%s shows the broken card and never loads a raw source", (_label, file) => {
+    const { container, getByText } = render(board(image(file)));
+    expect(getByText("No encuentro la imagen")).toBeInTheDocument();
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.innerHTML).not.toContain(`src="${file}"`);
   });
 
   it("tries again when the file path changes after a failure", () => {

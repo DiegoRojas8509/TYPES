@@ -259,3 +259,13 @@
     transition: none;
   }
 }
+
+/* Notice on notes the editor cannot round-trip. */
+.note-locked {
+  margin: var(--space-4) 0 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
+  background: var(--info-bg);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}

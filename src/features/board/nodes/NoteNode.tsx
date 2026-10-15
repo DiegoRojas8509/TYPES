@@ -3,7 +3,7 @@ import { EditorContent, useEditor } from "@tiptap/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { assetUrl } from "../../../lib/api";
 import { createExtensions } from "../../../lib/extensions";
-import { pathFromAssetUrl, resolveImageSrc, unresolveImageSrc } from "../../../lib/markdown";
+import { pathFromAssetUrl, resolveImageSrc, unresolveImageSrc, unsupportedSyntax } from "../../../lib/markdown";
 import { useApp } from "../../../store/app";
 import { useBoardActions, useBoardContext } from "../boardActions";
 import type { FlowNode } from "../boardModel";
@@ -39,6 +39,10 @@ export function NoteNode({ id, data, selected }: NodeProps<FlowNode>) {
   const { boardPath } = useBoardContext();
   const root = useApp((s) => s.settings?.workspaceRoot ?? null);
   const text = typeof data.text === "string" ? data.text : "";
+  // Markdown that Tiptap would silently drop on re-serializing (YAML, comments,
+  // HTML blocks, footnotes): such a note is shown but never edited here. Checked
+  // on the current text every render, since Claude may add or remove it later.
+  const locked = unsupportedSyntax(text).length > 0;
   const [editing, setEditing] = useState(false);
 
   // Editor callbacks are captured once by Tiptap; refs keep them current.
@@ -72,6 +76,8 @@ export function NoteNode({ id, data, selected }: NodeProps<FlowNode>) {
         handleKeyDown(view, event) {
           if (event.key !== "Escape") return false;
           view.dom.blur();
+          // Leave edit mode even if the blur event never arrives (nothing focused).
+          setEditing(false);
           return true;
         },
       },
@@ -110,7 +116,9 @@ export function NoteNode({ id, data, selected }: NodeProps<FlowNode>) {
     }
   }, [editor, editing, text]);
 
-  const startEditing = () => setEditing(true);
+  const startEditing = () => {
+    if (!locked) setEditing(true);
+  };
 
   return (
     <BlockShell
@@ -139,6 +147,11 @@ export function NoteNode({ id, data, selected }: NodeProps<FlowNode>) {
       >
         {text.trim() === "" && !editing && <p className="note-hint">Doble clic para escribir</p>}
         <EditorContent editor={editor} />
+        {locked && (
+          <p className="note-locked" role="note">
+            Este contenido tiene formato que el editor no puede conservar; edítalo desde el chat o con Claude.
+          </p>
+        )}
       </div>
     </BlockShell>
   );
