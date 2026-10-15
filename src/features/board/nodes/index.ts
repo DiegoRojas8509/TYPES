@@ -1,9 +1,11 @@
 import "./nodes.css";
 import type { NodeTypes } from "@xyflow/react";
 import { FALLBACK_TYPE } from "../boardModel";
+import { ChartNode } from "./ChartNode";
 import { GroupNode } from "./GroupNode";
 import { ImageNode } from "./ImageNode";
 import { NoteNode } from "./NoteNode";
+import { TableNode } from "./TableNode";
 import { UnknownNode } from "./UnknownNode";
 
 /**
@@ -15,6 +17,8 @@ export const nodeTypes: NodeTypes = {
   text: NoteNode,
   file: ImageNode,
   group: GroupNode,
+  table: TableNode,
+  chart: ChartNode,
   default: UnknownNode,
 };
 

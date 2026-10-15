@@ -12,6 +12,8 @@
 //   color     the node's optional `color`: JSON Canvas preset "1".."6" or a hex string; anything
 //             else is neutral. Presets map to `--block-1..6` (tokens.css, themed light/dark);
 //             hex travels as the inline `--block-accent`.
+//   titleSlot optional replacement for the title text (an inline title input, see TitleInput.tsx).
+//             `title` stays the fallback and the accessible name.
 //   actions   optional node placed at the right end of the header.
 //   minWidth/minHeight  resize limits (defaults 160 x 80).
 //   className extra classes for the card (e.g. "is-editing").
@@ -64,6 +66,7 @@ export function BlockShell({
   title,
   glyph,
   color,
+  titleSlot,
   actions,
   minWidth = 160,
   minHeight = 80,
@@ -75,6 +78,7 @@ export function BlockShell({
   title: string;
   glyph: ReactNode;
   color?: unknown;
+  titleSlot?: ReactNode;
   actions?: ReactNode;
   minWidth?: number;
   minHeight?: number;
@@ -95,8 +99,8 @@ export function BlockShell({
         <span className="block-glyph" aria-hidden="true">
           {glyph}
         </span>
-        <span className="block-title" id={`${id}-title`}>
-          {title}
+        <span className={titleSlot ? "block-title is-editable" : "block-title"} id={`${id}-title`}>
+          {titleSlot ?? title}
         </span>
         {actions}
       </header>
