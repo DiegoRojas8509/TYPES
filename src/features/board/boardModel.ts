@@ -61,7 +61,8 @@ export function patchFlowNode(n: FlowNode, patch: Partial<CanvasNode>, isKnown: 
   return { ...toFlowNode(merged, isKnown), selected: n.selected };
 }
 
-const whole = (v: number) => (Number.isFinite(v) ? Math.round(v) : 0);
+/** Rounds to an integer; NaN and Infinity become 0 so a position can never corrupt the file. */
+export const whole = (v: number) => (Number.isFinite(v) ? Math.round(v) : 0);
 
 /** Integer positions and sizes in the file: no `12.3456789` after dragging at odd zoom levels. */
 export function roundChanges(changes: NodeChange<FlowNode>[]): NodeChange<FlowNode>[] {

@@ -1,6 +1,6 @@
 import "@xyflow/react/dist/style.css";
 import "./board.css";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   applyEdgeChanges,
   applyNodeChanges,
@@ -16,11 +16,8 @@ import {
   type NodeChange,
   type NodeTypes,
 } from "@xyflow/react";
-import { api, errorMessage } from "../../lib/api";
 import { mergeCanvasText, newId, parseCanvas, serializeCanvas, type CanvasNode } from "../../lib/canvas";
-import { spaceOf, titleOf } from "../../lib/paths";
-import { useApp } from "../../store/app";
-import { relativeSrc } from "../editor/markdown";
+import { titleOf } from "../../lib/paths";
 import { useDocument, type DocStatus } from "../editor/useDocument";
 import { defaultNode, type BlockKind } from "./addMenu";
 import { BlockMenu } from "./BlockMenu";
@@ -34,11 +31,13 @@ import {
   toFlowEdge,
   toFlowNode,
   visibleEdges,
+  whole,
   type FlowEdge,
   type FlowNode,
 } from "./boardModel";
 import { FallbackNode } from "./FallbackNode";
 import { nodeTypes } from "./nodes";
+import { useBoardImages } from "./useBoardImages";
 
 // Module level: React Flow needs a stable identity for `nodeTypes`.
 const NODE_TYPES: NodeTypes = { ...nodeTypes, [FALLBACK_TYPE]: FallbackNode };
@@ -56,14 +55,6 @@ const STATUS_LABEL: Record<DocStatus, string> = {
   error: "",
 };
 
-const IMAGE_EXT: Record<string, string> = {
-  "image/png": "png",
-  "image/jpeg": "jpg",
-  "image/gif": "gif",
-  "image/webp": "webp",
-  "image/svg+xml": "svg",
-};
-
 type MenuState = { left: number; top: number; flow: { x: number; y: number }; centered: boolean };
 
 /** `.canvas` whiteboard: React Flow on top of `useDocument`. Mount with `key={path}`. */
@@ -77,14 +68,12 @@ export function BoardView({ path }: { path: string }) {
 
 function Board({ path }: { path: string }) {
   const doc = useDocument(path, mergeCanvasText);
-  const notify = useApp((s) => s.notify);
   const rf = useReactFlow<FlowNode, FlowEdge>();
 
   const rootRef = useRef<HTMLDivElement>(null);
   const flowRef = useRef<HTMLDivElement>(null);
   const docRef = useRef(doc);
   docRef.current = doc;
-  const mounted = useRef(true);
   // Live copy of `editable`, set during render with the parse result. Anything
   // that can resume after an await (image saves) must read this, never a stale
   // closure, so an unreadable board is never overwritten.
@@ -139,13 +128,6 @@ function Board({ path }: { path: string }) {
       apply([], []);
     }
   }, [parsed, apply]);
-
-  useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
 
   const onNodesChange = useCallback(
     (changes: NodeChange<FlowNode>[]) => {
@@ -240,7 +222,7 @@ function Board({ path }: { path: string }) {
     const x = menu.centered ? menu.flow.x - probe.width / 2 : menu.flow.x;
     const y = menu.centered ? menu.flow.y - probe.height / 2 : menu.flow.y;
     setMenu(null);
-    addNodes([{ ...probe, x: finite(x), y: finite(y) }]);
+    addNodes([{ ...probe, x: whole(x), y: whole(y) }]);
   }
 
   const onPaneDoubleClick = (e: React.MouseEvent) => {
@@ -249,56 +231,7 @@ function Board({ path }: { path: string }) {
     openMenuAt(e.clientX, e.clientY);
   };
 
-  const insertImages = useCallback(
-    async (files: File[], at?: { x: number; y: number }) => {
-      const space = spaceOf(path);
-      if (!path.includes("/") || !space) {
-        notify("Las imágenes se guardan dentro de un espacio. Mueve esta pizarra a uno para pegar imágenes.");
-        return;
-      }
-      let origin = at ?? viewportCentre();
-      for (const file of files) {
-        try {
-          const ext = IMAGE_EXT[file.type] ?? "png";
-          const name = file.name || `imagen.${ext}`;
-          const saved = await api.saveAttachment(space, name, new Uint8Array(await file.arrayBuffer()));
-          if (!mounted.current) return;
-          const node = defaultNode("image", finite(origin.x - 150), finite(origin.y - 110));
-          addNodes([{ ...node, file: plainRelative(path, saved) }]);
-          origin = { x: origin.x + 24, y: origin.y + 24 };
-        } catch (e) {
-          notify(`No se pudo guardar la imagen: ${errorMessage(e)}`);
-        }
-      }
-    },
-    [path, notify, viewportCentre, addNodes],
-  );
-
-  // Paste: window-level so it works once the board has been clicked, but never
-  // while Diego is typing in a note or table cell.
-  useEffect(() => {
-    if (!editable) return;
-    function onPaste(e: ClipboardEvent) {
-      const target = e.target;
-      if (target instanceof Element && target.closest("input, textarea, select, [contenteditable]:not([contenteditable=false])")) return;
-      const files = imageFiles(e.clipboardData?.files);
-      if (files.length === 0) return;
-      e.preventDefault();
-      void insertImages(files);
-    }
-    window.addEventListener("paste", onPaste);
-    return () => window.removeEventListener("paste", onPaste);
-  }, [editable, insertImages]);
-
-  function onDragOver(e: React.DragEvent) {
-    if (editable && e.dataTransfer.types.includes("Files")) e.preventDefault();
-  }
-  function onDrop(e: React.DragEvent) {
-    const files = imageFiles(e.dataTransfer.files);
-    if (!editable || files.length === 0) return;
-    e.preventDefault();
-    void insertImages(files, rf.screenToFlowPosition({ x: e.clientX, y: e.clientY }));
-  }
+  const { onDragOver, onDrop } = useBoardImages({ path, editableRef, addNodes, viewportCentre });
 
   const shown = useMemo(() => visibleEdges(nodes, edges), [nodes, edges]);
 
@@ -387,17 +320,4 @@ function Board({ path }: { path: string }) {
       {menu && editable && <BlockMenu left={menu.left} top={menu.top} onPick={pickBlock} onClose={() => setMenu(null)} />}
     </div>
   );
-}
-
-function finite(n: number): number {
-  return Number.isFinite(n) ? Math.round(n) : 0;
-}
-
-function imageFiles(list: FileList | undefined | null): File[] {
-  return Array.from(list ?? []).filter((f) => f.type.startsWith("image/"));
-}
-
-/** Path of `saved` relative to the board's folder, written plainly (no %20) as the `.canvas` format expects. */
-function plainRelative(boardPath: string, saved: string): string {
-  return relativeSrc(boardPath, saved).replace(/%20/g, " ").replace(/%28/g, "(").replace(/%29/g, ")");
 }
