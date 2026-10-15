@@ -182,4 +182,33 @@ describe("BoardView (mounted under jsdom)", () => {
     });
     expect(api.saveAttachment).not.toHaveBeenCalled();
   });
+
+  it("an image save that resolves after the board became unreadable never overwrites it", async () => {
+    let resolveSave!: (p: string) => void;
+    vi.mocked(api.saveAttachment).mockReturnValue(new Promise<string>((r) => (resolveSave = r)));
+    await open(EMPTY);
+    await act(async () => {
+      const ev = new Event("paste", { bubbles: true, cancelable: true });
+      Object.defineProperty(ev, "clipboardData", {
+        value: { files: [new File([new Uint8Array([1])], "a.png", { type: "image/png" })] },
+      });
+      document.body.dispatchEvent(ev);
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(api.saveAttachment).toHaveBeenCalledTimes(1);
+    // Claude breaks the file while the attachment is still being saved.
+    disk = "{ roto";
+    await act(async () => {
+      useApp.setState({ fsChange: { seq: ++seq, paths: [PATH] } });
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent("Esta pizarra no se puede abrir:");
+    await act(async () => {
+      resolveSave("Ropa/adjuntos/a.png");
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    await wait(AUTOSAVE_MS * 5);
+    expect(api.writeText).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent("Esta pizarra no se puede abrir:");
+  });
 });

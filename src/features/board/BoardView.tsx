@@ -85,6 +85,10 @@ function Board({ path }: { path: string }) {
   const docRef = useRef(doc);
   docRef.current = doc;
   const mounted = useRef(true);
+  // Live copy of `editable`, set during render with the parse result. Anything
+  // that can resume after an await (image saves) must read this, never a stale
+  // closure, so an unreadable board is never overwritten.
+  const editableRef = useRef(false);
 
   // The board lives in React state for rendering, mirrored in refs that are
   // updated synchronously so every edit serializes the CURRENT board, never a
@@ -106,6 +110,7 @@ function Board({ path }: { path: string }) {
   );
   const invalid = parsed !== null && !parsed.ok ? parsed.reason : null;
   const editable = parsed?.ok === true && doc.status !== "error";
+  editableRef.current = editable;
 
   const apply = useCallback((n: FlowNode[], e: FlowEdge[]) => {
     nodesRef.current = n;
@@ -116,6 +121,7 @@ function Board({ path }: { path: string }) {
 
   /** Writes the current board through the document: the ONLY path to `onChange`. */
   const persist = useCallback((n: FlowNode[], e: FlowEdge[]) => {
+    if (!editableRef.current) return;
     docRef.current.onChange(serializeCanvas(fromFlow(n, e)));
   }, []);
 
@@ -143,7 +149,7 @@ function Board({ path }: { path: string }) {
 
   const onNodesChange = useCallback(
     (changes: NodeChange<FlowNode>[]) => {
-      if (!editable) return;
+      if (!editableRef.current) return;
       const next = applyNodeChanges(roundChanges(changes), nodesRef.current);
       const removed = new Set(changes.flatMap((c) => (c.type === "remove" ? [c.id] : [])));
       const nextEdges =
@@ -153,31 +159,32 @@ function Board({ path }: { path: string }) {
       apply(next, nextEdges);
       if (changes.some(isUserEdit)) persist(next, nextEdges);
     },
-    [editable, apply, persist],
+    [apply, persist],
   );
 
   const onEdgesChange = useCallback(
     (changes: EdgeChange<FlowEdge>[]) => {
-      if (!editable) return;
+      if (!editableRef.current) return;
       const next = applyEdgeChanges(changes, edgesRef.current);
       apply(nodesRef.current, next);
       if (changes.some((c) => c.type === "remove")) persist(nodesRef.current, next);
     },
-    [editable, apply, persist],
+    [apply, persist],
   );
 
   const onConnect = useCallback(
     (c: Connection) => {
-      if (!editable) return;
+      if (!editableRef.current) return;
       const next = [...edgesRef.current, toFlowEdge({ id: newId(), fromNode: c.source, toNode: c.target })];
       apply(nodesRef.current, next);
       persist(nodesRef.current, next);
     },
-    [editable, apply, persist],
+    [apply, persist],
   );
 
   const addNodes = useCallback(
     (added: CanvasNode[]) => {
+      if (!editableRef.current) return;
       const next = [
         ...nodesRef.current.map((n) => (n.selected ? { ...n, selected: false } : n)),
         ...added.map((n) => ({ ...toFlowNode(n, isKnown), selected: true })),
@@ -192,13 +199,13 @@ function Board({ path }: { path: string }) {
     () => ({
       update(id, patch) {
         const target = nodesRef.current.find((n) => n.id === id);
-        if (!target || !editable) return;
+        if (!target || !editableRef.current) return;
         const next = nodesRef.current.map((n) => (n.id === id ? patchFlowNode(n, patch, isKnown) : n));
         apply(next, edgesRef.current);
         persist(next, edgesRef.current);
       },
     }),
-    [editable, apply, persist],
+    [apply, persist],
   );
 
   /** Centre of the visible board, in flow coordinates. */
