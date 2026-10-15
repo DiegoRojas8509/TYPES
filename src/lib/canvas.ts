@@ -34,6 +34,11 @@ export function newId(): string {
   return crypto.randomUUID().slice(0, 8);
 }
 
+/** Own-property check (tsconfig lib predates Object.hasOwn). */
+function hasOwn(obj: object, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(obj, key);
+}
+
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
@@ -96,11 +101,17 @@ export function parseCanvas(text: string): { ok: true; doc: CanvasDoc } | { ok: 
   };
 }
 
-/** Known keys first (in `order`), then the remaining keys in their original order. */
+/**
+ * Known keys first (in `order`), then the remaining keys in their original order.
+ * Uses own-property checks and defineProperty so fields named like Object.prototype
+ * members (`constructor`, `toString`, `__proto__`, ...) survive as own fields.
+ */
 function orderKeys<T extends Record<string, unknown>>(obj: T, order: string[]): Record<string, unknown> {
   const out: Record<string, unknown> = {};
-  for (const k of order) if (k in obj) out[k] = obj[k];
-  for (const k of Object.keys(obj)) if (!(k in out)) out[k] = obj[k];
+  const put = (k: string) =>
+    Object.defineProperty(out, k, { value: obj[k], writable: true, enumerable: true, configurable: true });
+  for (const k of order) if (hasOwn(obj, k)) put(k);
+  for (const k of Object.keys(obj)) if (!hasOwn(out, k)) put(k);
   return out;
 }
 
@@ -120,7 +131,7 @@ function deepEqual(a: unknown, b: unknown): boolean {
   }
   if (isRecord(a) && isRecord(b)) {
     const ka = Object.keys(a);
-    return ka.length === Object.keys(b).length && ka.every((k) => k in b && deepEqual(a[k], b[k]));
+    return ka.length === Object.keys(b).length && ka.every((k) => hasOwn(b, k) && deepEqual(a[k], b[k]));
   }
   return false;
 }

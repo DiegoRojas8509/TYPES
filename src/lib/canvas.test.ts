@@ -68,8 +68,29 @@ describe("parseCanvas", () => {
 describe("serializeCanvas", () => {
   it("preserves unknown node types and fields through a round trip", () => {
     const src = JSON.stringify({ nodes: [{ ...node("n1"), type: "raro", foo: 1, nested: { a: [1, 2] } }], edges: [] });
+    const original = parsed(src).nodes[0];
     const doc = parsed(serializeCanvas(parsed(src)));
-    expect(doc.nodes[0]).toMatchObject({ type: "raro", foo: 1, nested: { a: [1, 2] } });
+    expect(doc.nodes[0]).toEqual(original);
+    expect(doc.nodes[0]).toEqual({ ...node("n1"), type: "raro", foo: 1, nested: { a: [1, 2] } });
+  });
+
+  it("preserves fields named like Object.prototype members, including __proto__", () => {
+    const src =
+      '{"nodes":[{"id":"a","type":"x","x":0,"y":0,"width":1,"height":1,' +
+      '"constructor":"keep","toString":1,"__proto__":{"z":1}}],"edges":[]}';
+    const first = parsed(src).nodes[0];
+    for (const k of ["constructor", "toString", "__proto__"]) expect(Object.prototype.hasOwnProperty.call(first, k)).toBe(true);
+
+    const out = serializeCanvas(parsed(src));
+    expect(out).toContain('"constructor": "keep"');
+    expect(out).toContain('"toString": 1');
+    expect(out).toContain('"__proto__"');
+
+    const again = parsed(out).nodes[0];
+    for (const k of ["constructor", "toString", "__proto__"]) expect(Object.prototype.hasOwnProperty.call(again, k)).toBe(true);
+    expect(Object.getOwnPropertyDescriptor(again, "__proto__")?.value).toEqual({ z: 1 });
+    expect(Object.getPrototypeOf(again)).toBe(Object.prototype);
+    expect(serializeCanvas(parsed(out))).toBe(out);
   });
 
   it("puts id,type,x,y,width,height first and keeps the rest in order", () => {
@@ -123,6 +144,20 @@ describe("mergeCanvasText", () => {
     const mine = text({ nodes: [node("n1", { text: "mío" })], edges: [] });
     const theirs = text({ nodes: [node("n1", { text: "suyo" })], edges: [] });
     expect(mergeCanvasText(base, mine, theirs)).toEqual({ ok: false });
+  });
+
+  it("conflicts when both add the same new id with different content", () => {
+    const mine = text({ nodes: [node("n1", { text: "base" }), node("n2", { text: "a" })], edges: [] });
+    const theirs = text({ nodes: [node("n1", { text: "base" }), node("n2", { text: "b" })], edges: [] });
+    expect(mergeCanvasText(base, mine, theirs)).toEqual({ ok: false });
+  });
+
+  it("merge output is already in canonical serialized form", () => {
+    const mine = text({ nodes: [node("n1", { text: "base", x: 50 })], edges: [] });
+    const theirs = text({ nodes: [node("n1", { text: "base" }), node("n2", { zeta: 1, color: "3" })], edges: [] });
+    const r = mergeCanvasText(base, mine, theirs);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(serializeCanvas(parsed(r.text))).toBe(r.text);
   });
 
   it("is fine when both make the same change", () => {
