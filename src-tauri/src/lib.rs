@@ -39,6 +39,7 @@ pub fn run() {
             workspace::write_text,
             workspace::create_space,
             workspace::create_page,
+            workspace::create_board,
             workspace::create_folder,
             workspace::rename_entry,
             workspace::delete_entry,

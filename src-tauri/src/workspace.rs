@@ -158,6 +158,29 @@ pub fn ensure_root(root: &Path) -> Result<()> {
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
         Err(e) => return Err(e.into()),
     }
+    ensure_boards_section(root)
+}
+
+/// Appends the `## Pizarras` section to the root CLAUDE.md when it is missing.
+/// Existing content is never modified; calling it twice does not duplicate.
+pub fn ensure_boards_section(root: &Path) -> Result<()> {
+    let file = root.join("CLAUDE.md");
+    let existing = match std::fs::read(&file) {
+        Ok(bytes) => bytes,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+        Err(e) => return Err(e.into()),
+    };
+    let text = String::from_utf8_lossy(&existing);
+    if text.lines().any(|l| l.trim_end() == "## Pizarras") {
+        return Ok(());
+    }
+    let mut addition = String::new();
+    if !existing.is_empty() {
+        addition.push_str(if existing.ends_with(b"\n") { "\n" } else { "\n\n" });
+    }
+    addition.push_str(crate::templates::BOARDS_SECTION);
+    let mut f = std::fs::OpenOptions::new().append(true).create(true).open(&file)?;
+    f.write_all(addition.as_bytes())?;
     Ok(())
 }
 
@@ -234,17 +257,27 @@ pub fn create_space_in(root: &Path, name: &str) -> Result<String> {
     Ok(unique)
 }
 
-pub fn create_page_in(root: &Path, dir: &str, name: &str) -> Result<String> {
+/// Creates an empty-or-seeded file with `ext` in `dir`, stripping a trailing
+/// `ext` (case-insensitive) from `name` and deduplicating against siblings.
+fn create_file_in(root: &Path, dir: &str, name: &str, ext: &str, content: &str) -> Result<String> {
     let name = validate_name(name)?;
     let dir_path = resolve_dir(root, dir)?;
-    let stem = match name.len().checked_sub(3) {
-        Some(i) if name.is_char_boundary(i) && name[i..].eq_ignore_ascii_case(".md") => &name[..i],
+    let stem = match name.len().checked_sub(ext.len()) {
+        Some(i) if name.is_char_boundary(i) && name[i..].eq_ignore_ascii_case(ext) => &name[..i],
         _ => name,
     };
     validate_name(stem)?;
-    let unique = unique_name(&dir_path, stem, ".md");
-    std::fs::write(dir_path.join(&unique), "")?;
+    let unique = unique_name(&dir_path, stem, ext);
+    std::fs::write(dir_path.join(&unique), content)?;
     Ok(child_rel(&rel_parts(dir)?, &unique))
+}
+
+pub fn create_page_in(root: &Path, dir: &str, name: &str) -> Result<String> {
+    create_file_in(root, dir, name, ".md", "")
+}
+
+pub fn create_board_in(root: &Path, dir: &str, name: &str) -> Result<String> {
+    create_file_in(root, dir, name, ".canvas", crate::templates::EMPTY_CANVAS)
 }
 
 pub fn create_folder_in(root: &Path, dir: &str, name: &str) -> Result<String> {
@@ -370,6 +403,11 @@ pub fn create_page(state: State<AppState>, dir: String, name: String) -> Result<
 }
 
 #[tauri::command]
+pub fn create_board(state: State<AppState>, dir: String, name: String) -> Result<String> {
+    create_board_in(&state.root(), &dir, &name)
+}
+
+#[tauri::command]
 pub fn create_folder(state: State<AppState>, dir: String, name: String) -> Result<String> {
     create_folder_in(&state.root(), &dir, &name)
 }
@@ -468,7 +506,10 @@ mod tests {
         assert!(root.join("CLAUDE.md").is_file());
         fs::write(root.join("CLAUDE.md"), "mío").unwrap();
         ensure_root(&root).unwrap();
-        assert_eq!(fs::read_to_string(root.join("CLAUDE.md")).unwrap(), "mío");
+        let md = fs::read_to_string(root.join("CLAUDE.md")).unwrap();
+        assert!(md.starts_with("mío"));
+        assert!(!md.contains("Reglas de formato del espacio de trabajo"));
+        assert!(md.contains("## Pizarras"));
     }
 
     #[test]
@@ -526,6 +567,61 @@ mod tests {
         assert_eq!(create_page_in(&root, "Ropa", "Notas.md").unwrap(), "Ropa/Notas 3.md");
         assert!(root.join("Ropa/Notas 2.md").is_file());
         assert_eq!(fs::read_to_string(root.join("Ropa/Notas.md")).unwrap(), "");
+    }
+
+    #[test]
+    fn create_board_dedupes_name_and_writes_empty_canvas() {
+        let (_d, root) = ws();
+        create_space_in(&root, "Ropa").unwrap();
+        assert_eq!(create_board_in(&root, "Ropa", "Plan").unwrap(), "Ropa/Plan.canvas");
+        assert_eq!(create_board_in(&root, "Ropa", "Plan").unwrap(), "Ropa/Plan 2.canvas");
+        assert_eq!(create_board_in(&root, "Ropa", "Plan.canvas").unwrap(), "Ropa/Plan 3.canvas");
+        assert_eq!(create_board_in(&root, "Ropa", "Plan.CANVAS").unwrap(), "Ropa/Plan 4.canvas");
+        let raw = fs::read_to_string(root.join("Ropa/Plan.canvas")).unwrap();
+        assert_eq!(raw, "{\"nodes\":[],\"edges\":[]}\n");
+        let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(v["nodes"], serde_json::json!([]));
+        assert_eq!(v["edges"], serde_json::json!([]));
+    }
+
+    #[test]
+    fn create_board_rejects_escape_and_bad_names() {
+        let (_d, root) = ws();
+        assert!(matches!(create_board_in(&root, "..", "x"), Err(AppError::OutsideWorkspace)));
+        assert!(create_board_in(&root, "NoExiste", "x").is_err());
+        assert!(matches!(create_board_in(&root, "", ".canvas"), Err(AppError::InvalidName(_))));
+        assert!(matches!(create_board_in(&root, "", "a/b"), Err(AppError::InvalidName(_))));
+    }
+
+    #[test]
+    fn ensure_boards_section_appends_once_and_keeps_text() {
+        let (_d, root) = ws();
+        let original = "# Mis reglas\n\nTexto de Diego sin salto final";
+        fs::write(root.join("CLAUDE.md"), original).unwrap();
+        ensure_boards_section(&root).unwrap();
+        let once = fs::read_to_string(root.join("CLAUDE.md")).unwrap();
+        assert!(once.starts_with(original));
+        assert_eq!(once.matches("## Pizarras").count(), 1);
+        assert!(once.contains(".canvas") && once.contains("decision"));
+        ensure_boards_section(&root).unwrap();
+        ensure_root(&root).unwrap();
+        assert_eq!(fs::read_to_string(root.join("CLAUDE.md")).unwrap(), once);
+    }
+
+    #[test]
+    fn ensure_boards_section_creates_missing_claude_md() {
+        let d = tempfile::tempdir().unwrap();
+        ensure_boards_section(d.path()).unwrap();
+        let md = fs::read_to_string(d.path().join("CLAUDE.md")).unwrap();
+        assert_eq!(md.matches("## Pizarras").count(), 1);
+    }
+
+    #[test]
+    fn new_workspace_claude_md_includes_boards_section() {
+        let (_d, root) = ws();
+        let md = fs::read_to_string(root.join("CLAUDE.md")).unwrap();
+        assert!(md.starts_with(crate::templates::ROOT_CLAUDE_MD));
+        assert_eq!(md.matches("## Pizarras").count(), 1);
     }
 
     #[test]
