@@ -4,7 +4,7 @@
 //   loading -> clean <-> dirty -> saving -> clean
 //                         \-> conflict (disk changed while there were unsaved edits)
 //   loading -> error (the file could not be read)
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { api, errorMessage } from "../../lib/api";
 import { baseName, joinRel, parentOf } from "../../lib/paths";
 import { useApp, type FsChange } from "../../store/app";
@@ -22,6 +22,13 @@ export interface DocSnapshot {
   /** Spanish message when `status` is "error". */
   error: string | null;
 }
+
+/**
+ * Optional three-way merge used when the disk changes under unsaved edits.
+ * `base` is the text we last saw on disk, `mine` the user's text, `theirs` the
+ * new disk text. The controller stays format-agnostic: the caller injects it.
+ */
+export type MergeFn = (base: string, mine: string, theirs: string) => { ok: true; text: string } | { ok: false };
 
 const LOADING: DocSnapshot = { status: "loading", content: null, revision: 0, error: null };
 
@@ -44,7 +51,10 @@ export class DocumentController {
   /** Contents written during the current save burst, to recognise their echoes. */
   private ownWrites = new Set<string>();
 
-  constructor(readonly path: string) {
+  constructor(
+    readonly path: string,
+    private readonly merge?: MergeFn,
+  ) {
     this.seenSeq = useApp.getState().fsChange?.seq ?? 0;
   }
 
@@ -177,6 +187,26 @@ export class DocumentController {
       this.emit({ status: "clean", content: text, revision: this.snap.revision + 1, error: null });
       return;
     }
+    // Disk changed under unsaved edits. Try the injected merge first, but never
+    // while a write is in flight (the disk text could be our own write, and
+    // merging could drop either side) or when already in conflict.
+    if (this.merge && !this.inFlight && !this.conflict && this.mine !== null && this.lastSaved !== null) {
+      const merged = this.merge(this.lastSaved, this.mine, text);
+      if (merged.ok) {
+        this.lastSaved = text;
+        this.mine = merged.text;
+        this.ownWrites = new Set([text]);
+        this.clearTimer();
+        if (merged.text === text) {
+          this.latest = null; // the merge result is exactly what is on disk
+        } else {
+          this.latest = merged.text;
+          this.timer = setTimeout(() => void this.save(), AUTOSAVE_MS);
+        }
+        this.emit({ content: merged.text, revision: this.snap.revision + 1, error: null });
+        return;
+      }
+    }
     this.conflict = true;
     this.clearTimer();
     this.emit();
@@ -246,15 +276,19 @@ export interface UseDocument extends DocSnapshot {
   keepMine(): void;
 }
 
-export function useDocument(path: string | null): UseDocument {
+export function useDocument(path: string | null, merge?: MergeFn): UseDocument {
   const [ctrl, setCtrl] = useState<DocumentController | null>(null);
+  // The controller is keyed on `path` only; a new function identity per render
+  // must not recreate it, so it reads the latest merge through a ref.
+  const mergeRef = useRef(merge);
+  mergeRef.current = merge;
 
   useEffect(() => {
     if (!path) {
       setCtrl(null);
       return;
     }
-    const c = new DocumentController(path);
+    const c = new DocumentController(path, merge ? (b, m, t) => (mergeRef.current ?? merge)(b, m, t) : undefined);
     setCtrl(c);
     void c.load();
     return () => c.dispose();

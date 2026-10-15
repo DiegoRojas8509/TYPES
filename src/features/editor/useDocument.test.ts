@@ -8,7 +8,7 @@ vi.mock("../../lib/api", async (importOriginal) => {
 
 import { api } from "../../lib/api";
 import { initialState, useApp } from "../../store/app";
-import { AUTOSAVE_MS, useDocument } from "./useDocument";
+import { AUTOSAVE_MS, useDocument, type MergeFn } from "./useDocument";
 
 const readText = vi.mocked(api.readText);
 const writeText = vi.mocked(api.writeText);
@@ -25,8 +25,8 @@ async function fsChanged(...paths: string[]) {
   });
 }
 
-async function open(path: string | null = PATH) {
-  const hook = renderHook(({ p }) => useDocument(p), { initialProps: { p: path } });
+async function open(path: string | null = PATH, merge?: MergeFn) {
+  const hook = renderHook(({ p }) => useDocument(p, merge), { initialProps: { p: path } });
   await act(async () => {
     await vi.advanceTimersByTimeAsync(0);
   });
@@ -252,5 +252,130 @@ describe("useDocument", () => {
     });
     expect(result.current.status).toBe("dirty");
     expect(useApp.getState().notice?.message).toMatch(/disco lleno/);
+  });
+
+  describe("with a merge function", () => {
+    it("successful_merge_goes_dirty_resets_content_and_autosaves_the_merged_text", async () => {
+      const merge = vi.fn<MergeFn>(() => ({ ok: true, text: "M" }));
+      const { result } = await open(PATH, merge);
+      const rev = result.current.revision;
+      act(() => result.current.onChange("mi texto"));
+      disk = "texto de Claude";
+      await fsChanged(PATH);
+      expect(result.current.status).toBe("dirty");
+      expect(result.current.content).toBe("M");
+      expect(result.current.revision).toBe(rev + 1);
+      expect(writeText).not.toHaveBeenCalled();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(AUTOSAVE_MS);
+      });
+      expect(writeText).toHaveBeenCalledTimes(1);
+      expect(writeText).toHaveBeenCalledWith(PATH, "M");
+      expect(disk).toBe("M");
+      expect(result.current.status).toBe("clean");
+    });
+
+    it("merge_receives_base_mine_and_disk_text", async () => {
+      const merge = vi.fn<MergeFn>(() => ({ ok: true, text: "M" }));
+      const { result } = await open(PATH, merge);
+      const base = disk;
+      act(() => result.current.onChange("mi texto"));
+      disk = "texto de Claude";
+      await fsChanged(PATH);
+      expect(merge).toHaveBeenCalledTimes(1);
+      expect(merge).toHaveBeenCalledWith(base, "mi texto", "texto de Claude");
+    });
+
+    it("failed_merge_is_a_conflict_as_before", async () => {
+      const merge = vi.fn<MergeFn>(() => ({ ok: false }));
+      const { result } = await open(PATH, merge);
+      act(() => result.current.onChange("mi texto"));
+      disk = "texto de Claude";
+      await fsChanged(PATH);
+      expect(result.current.status).toBe("conflict");
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5000);
+      });
+      expect(writeText).not.toHaveBeenCalled();
+      expect(disk).toBe("texto de Claude");
+    });
+
+    it("disk_change_without_pending_edits_reloads_silently_and_skips_merge", async () => {
+      const merge = vi.fn<MergeFn>(() => ({ ok: true, text: "M" }));
+      const { result } = await open(PATH, merge);
+      disk = "texto de Claude";
+      await fsChanged(PATH);
+      expect(result.current.status).toBe("clean");
+      expect(result.current.content).toBe("texto de Claude");
+      expect(merge).not.toHaveBeenCalled();
+    });
+
+    it("merge_that_equals_the_disk_text_resets_content_without_writing", async () => {
+      const merge = vi.fn<MergeFn>((_b, _m, theirs) => ({ ok: true, text: theirs }));
+      const { result } = await open(PATH, merge);
+      act(() => result.current.onChange("mi texto"));
+      disk = "texto de Claude";
+      await fsChanged(PATH);
+      expect(result.current.status).toBe("clean");
+      expect(result.current.content).toBe("texto de Claude");
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5000);
+      });
+      expect(writeText).not.toHaveBeenCalled();
+    });
+
+    it("disk_change_while_a_merged_write_is_pending_merges_again_from_the_new_disk", async () => {
+      const merge = vi.fn<MergeFn>((_b, mine, theirs) => ({ ok: true, text: `${mine}+${theirs}` }));
+      const { result } = await open(PATH, merge);
+      act(() => result.current.onChange("A"));
+      disk = "D1";
+      await fsChanged(PATH);
+      expect(result.current.content).toBe("A+D1");
+      disk = "D2";
+      await fsChanged(PATH);
+      expect(merge).toHaveBeenLastCalledWith("D1", "A+D1", "D2");
+      expect(writeText).not.toHaveBeenCalled();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(AUTOSAVE_MS);
+      });
+      expect(writeText).toHaveBeenCalledTimes(1);
+      expect(writeText).toHaveBeenCalledWith(PATH, "A+D1+D2");
+    });
+
+    it("does_not_merge_while_a_write_is_in_flight_and_conflicts_instead", async () => {
+      const merge = vi.fn<MergeFn>(() => ({ ok: true, text: "M" }));
+      const { result } = await open(PATH, merge);
+      writeText.mockImplementation(() => new Promise<void>(() => {}));
+      act(() => result.current.onChange("A"));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(AUTOSAVE_MS);
+      });
+      expect(result.current.status).toBe("saving");
+      disk = "texto de Claude";
+      await fsChanged(PATH);
+      expect(merge).not.toHaveBeenCalled();
+      expect(result.current.status).toBe("conflict");
+    });
+
+    it("a_new_merge_function_identity_each_render_does_not_reload_the_file", async () => {
+      const { rerender } = renderHook(() => useDocument(PATH, () => ({ ok: false })));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      rerender();
+      rerender();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(readText).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("without_a_merge_function_a_dirty_disk_change_is_still_a_conflict", async () => {
+    const { result } = await open(PATH, undefined);
+    act(() => result.current.onChange("mi texto"));
+    disk = "texto de Claude";
+    await fsChanged(PATH);
+    expect(result.current.status).toBe("conflict");
   });
 });
