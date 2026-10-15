@@ -1,0 +1,123 @@
+/* Whiteboard. Themed only through the global tokens; React Flow's own
+   variables are pointed at them so light and dark follow the app. */
+.board {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.board-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+.board-add {
+  width: 28px;
+  padding: 0;
+  font-size: var(--text-lg);
+  line-height: 1;
+}
+.board-loading {
+  flex: 1;
+}
+.board-flow {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+.board-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  margin: 0;
+  padding: var(--space-6);
+  text-align: center;
+  color: var(--text-faint);
+  font-size: var(--text-md);
+  pointer-events: none;
+}
+
+.board .react-flow {
+  --xy-background-color: var(--bg);
+  --xy-background-pattern-dots-color: var(--border-strong);
+  --xy-edge-stroke: var(--text-faint);
+  --xy-edge-stroke-selected: var(--accent);
+  --xy-edge-stroke-width: 1.5;
+  --xy-connectionline-stroke: var(--accent);
+  --xy-edge-label-color: var(--text-muted);
+  --xy-edge-label-background-color: var(--bg);
+  --xy-handle-background-color: var(--accent);
+  --xy-handle-border-color: var(--bg);
+  --xy-resize-background-color: var(--accent);
+  --xy-selection-background-color: var(--bg-hover);
+  --xy-selection-border: 1px dotted var(--accent);
+  --xy-minimap-background-color: var(--bg-side);
+  --xy-minimap-mask-background-color: var(--bg-hover);
+  --xy-minimap-node-background-color: var(--border-strong);
+  --xy-controls-button-background-color: var(--bg-raised);
+  --xy-controls-button-background-color-hover: var(--bg-hover);
+  --xy-controls-button-color: var(--text);
+  --xy-controls-button-border-color: var(--border);
+  --xy-controls-box-shadow: 0 0 0 1px var(--border);
+  font-family: var(--font-ui);
+}
+.board .react-flow__minimap {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.board .react-flow__controls {
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.board .react-flow__controls-button svg {
+  fill: currentColor;
+}
+.board .react-flow__node.selectable:focus-visible,
+.board .react-flow__node.selected {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Fallback card for node types without a block component. */
+.board-fallback {
+  display: grid;
+  place-content: center;
+  width: 100%;
+  height: 100%;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--bg-raised);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+.board-fallback-type {
+  font-family: var(--font-mono);
+}
+
+/* Block menu. */
+.board-menu {
+  position: absolute;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 176px;
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-pop);
+}
+.board-menu-item {
+  height: var(--row-h);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-sm);
+  text-align: left;
+  font-size: var(--text-md);
+}
+.board-menu-item:hover,
+.board-menu-item:focus-visible {
+  background: var(--bg-hover);
+  outline: none;
+}

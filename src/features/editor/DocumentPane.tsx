@@ -17,11 +17,11 @@ export function DocumentPane() {
   if (!openPath) {
     return (
       <div className="empty">
-        <h2>{hasSpaces ? "Abre una página" : "Empieza por un espacio"}</h2>
+        <h2>{hasSpaces ? "Abre una pizarra" : "Empieza por un espacio"}</h2>
         <p>
           {hasSpaces
-            ? "Elige una página en la barra lateral, o crea una nueva con el botón + de un espacio."
-            : "Crea un espacio en la barra lateral para tu primer negocio o proyecto. Dentro escribirás páginas y Claude trabajará sobre ellas."}
+            ? "Elige una pizarra en la barra lateral, o crea una nueva con el botón + de un espacio."
+            : "Crea un espacio en la barra lateral para tu primer negocio o proyecto. Dentro armarás pizarras y Claude trabajará sobre ellas."}
         </p>
       </div>
     );
