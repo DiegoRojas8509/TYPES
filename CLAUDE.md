@@ -1,6 +1,6 @@
 # Types
 
-App de escritorio personal de Diego: su mesa de trabajo para negocios reales (el primero: un proyecto de ropa). Escribe notas y datos de forma descriptiva, y su Claude Code trabaja sobre esos mismos archivos desde un panel de chat dentro de la app: analiza, costea, genera reportes, dashboards y previews de moldes, y Diego ve en vivo lo que hace.
+App de escritorio personal de Diego: su mesa de trabajo para negocios reales (el primero: un proyecto de ropa). Organiza ideas en pizarras (bloques de nota, tabla, gráfica, imagen, línea de tiempo y decisión) y su Claude Code trabaja sobre esos mismos archivos desde un panel de chat dentro de la app: analiza, costea, genera reportes, dashboards y previews de moldes, y Diego ve en vivo lo que hace.
 
 ## 0. Arranque
 Memoria visible en `~/Documents/CLAUDE/memorias/TYPES`. Skills de la biblioteca prendidas aquí: ver `.claude/skills/`.
@@ -12,21 +12,22 @@ Para features nuevas usa superpowers (brainstorming → writing-plans → subage
 - Cada subagente recibe la tarea del plan y debe leer este CLAUDE.md completo antes de tocar código. Si la guía y la tarea chocan, se detiene y lo reporta; no improvisa arquitectura.
 
 ## 2. Qué es y qué no es
-**Es:** editor tipo Notion + gestor de archivos + panel de Claude, todo sobre una carpeta local de archivos normales.
+**Es:** pizarra creativa (`.canvas`) + editor de notas Markdown + gestor de archivos + panel de Claude, todo sobre una carpeta local de archivos normales.
 **No es:** una app web, un servicio con backend, ni un producto multiusuario. No lleva API key propia: usa el Claude Code ya instalado y logueado en la Mac.
 **Lo que la haría fallar aunque funcione:** que Claude no pueda leer o escribir lo que Diego ve; que la app pierda o reescriba texto de Diego; que los datos queden encerrados en un formato que solo la app entiende.
 
 ## 3. Fases
 | Fase | Contenido | Estado |
 |------|-----------|--------|
-| 1 | Espacios y páginas, editor Markdown, visor de HTML e imágenes, refresco en vivo, panel de chat con Claude | Código completo (tareas 1-7, pruebas verdes) y `Types.app` compilada. **Falta la prueba real con la ventana abierta** (plan, Tarea 8 paso 3): ver `docs/superpowers/plans/2026-10-12-types-fase-1.md` |
-| 2 | Tableros tipo Trello (archivos de datos dentro del espacio) | Pendiente |
+| 1 | Espacios y páginas, editor Markdown, visor de HTML e imágenes, refresco en vivo, panel de chat con Claude | Código completo (tareas 1-7, pruebas verdes) y `Types.app` compilada. **Falta la prueba real con la ventana abierta** (plan, Tarea 8 paso 3; se cubre junto con la de la pizarra): ver `docs/superpowers/plans/2026-10-12-types-fase-1.md` |
+| Pizarra | Pizarras `.canvas` (JSON Canvas + bloques extra) como página principal; el "+" crea pizarras; Claude sabe cuál está abierta y la puede ordenar | Código completo (tareas 1-9, pruebas verdes), `Types.app` compila. **Falta la prueba real con la ventana abierta**: ver `docs/superpowers/plans/2026-10-14-pizarra.md` (Tarea 10) |
+| 2 | Tableros tipo Trello | Absorbida por la pizarra (zonas + bloques de proceso). Solo se retoma si Diego pide columnas/tarjetas estilo Kanban |
 | 3 | Exportación (Google Drive y otros destinos) | Pendiente |
 
 ## 4. Arquitectura
 
 ### Stack
-Tauri 2 · Rust · React 19 + TypeScript + Vite · pnpm · Zustand (estado) · Tiptap con serialización Markdown (editor) · Vitest y `cargo test`.
+Tauri 2 · Rust · React 19 + TypeScript + Vite · pnpm · Zustand (estado) · Tiptap con serialización Markdown (editor de notas `.md`) · `@xyflow/react` (pizarra) · `recharts` (gráficas) · Vitest y `cargo test`.
 Antes de usar una librería, confirma su API actual con context7; no programes de memoria.
 
 ### Dónde vive cada cosa
@@ -41,25 +42,27 @@ espacios/
   CLAUDE.md            reglas de formato para Claude (plantilla que crea la app)
   Ropa/                un espacio = un negocio o proyecto
     CLAUDE.md          contexto de ese negocio (proveedores, tarifas, mermas, márgenes)
-    *.md               páginas: texto descriptivo + tablas con los datos duros
+    *.canvas           pizarras: la página principal (lo que crea el "+")
+    *.md               notas Markdown: ya existentes y los CLAUDE.md; se abren en el editor
     *.html             salidas visuales de Claude: dashboards, reportes, previews de moldes
-    adjuntos/          imágenes y archivos que Diego suelta en una página o en el chat
+    adjuntos/          imágenes y archivos que Diego suelta en una pizarra, nota o chat
 ```
-- Las páginas son Markdown (GFM) puro. Sin formato propietario ni base de datos.
+- Una pizarra es un `.canvas`: JSON Canvas (`{nodes, edges}`; todo nodo lleva `id, type, x, y, width, height, color?`) más bloques extra. Tipos: `text` (nota Markdown), `file` (imagen, ruta relativa a la carpeta del `.canvas`, normalmente en `adjuntos/`), `group` (zona), `table`, `chart`, `timeline`, `decision`; un tipo desconocido se conserva intacto. Campos de cada tipo: plan `docs/superpowers/plans/2026-10-14-pizarra.md`, sección "Formato `.canvas`".
+- El "+" del sidebar crea pizarras. Los `.md` siguen abriéndose y guardándose en el editor Tiptap, pero ya no se crean desde la app. Sin formato propietario ni base de datos: ambos son texto plano legible fuera de la app.
 - Los HTML que genera Claude deben ser autocontenidos (CSS y JS inline), porque el visor los muestra aislados.
 - El sistema de archivos es la única fuente de verdad. La app no guarda copia del contenido.
 
 ### Backend (Rust, `src-tauri/src/`)
 | Módulo | Responsabilidad |
 |--------|-----------------|
-| `workspace.rs` | Raíz del workspace, árbol, leer/escribir, crear/renombrar/borrar (a la papelera), importar adjuntos. Toda ruta se valida contra la raíz. |
-| `templates.rs` | Plantillas de los CLAUDE.md del workspace y de cada espacio. |
+| `workspace.rs` | Raíz del workspace, árbol, leer/escribir, crear/renombrar/borrar (a la papelera), importar adjuntos, `create_board` (crea un `.canvas` vacío sin pisar nombres). Toda ruta se valida contra la raíz. |
+| `templates.rs` | Plantillas de los CLAUDE.md del workspace y de cada espacio, incluida la sección `## Pizarras` (reglas del `.canvas` para Claude; se agrega al CLAUDE.md raíz existente sin tocar el resto). |
 | `watcher.rs` | Vigila el workspace y emite el evento `fs-changed` al frontend. |
 | `claude.rs` | Localiza el binario de Claude Code, lo lanza en la carpeta del espacio y retransmite su salida como eventos `claude-event`. |
 | `settings.rs` | Ajustes persistentes (raíz del workspace, ruta manual del binario). |
 
 ### Frontend (`src/`)
-`lib/api.ts` (única puerta a `invoke` y eventos) · `store/` · `features/sidebar` · `features/editor` · `features/viewer` · `features/chat`. Cada feature es dueña de sus componentes y su lógica; no se importan entre sí, se comunican por el store.
+`lib/api.ts` (única puerta a `invoke` y eventos) · `store/` · `features/sidebar` · `features/editor` (notas `.md`) · `features/board` (pizarra y sus bloques; lógica de formato en `lib/canvas.ts`) · `features/viewer` · `features/chat`. Cada feature es dueña de sus componentes y su lógica; no se importan entre sí, se comunican por el store.
 
 ### Integración con Claude Code
 - Binario, en este orden: ruta manual en ajustes → `claude` en el PATH del shell de login → la extensión de VS Code más reciente en `~/.vscode/extensions/anthropic.claude-code-*/resources/native-binary/claude`. (En esta Mac hoy solo existe la tercera.)
@@ -72,7 +75,9 @@ espacios/
 
 ## 5. Reglas de implementación
 - **Nunca perder texto de Diego.** Guardado automático con espera de 800 ms. Si un archivo abierto cambia en disco: sin cambios locales pendientes se recarga solo; con cambios pendientes se avisa y Diego elige.
-- **No reescribir lo que no se editó.** Abrir una página no la guarda. Solo se escribe a disco cuando Diego modifica algo.
+- **No reescribir lo que no se editó.** Abrir una página o pizarra no la guarda. Solo se escribe a disco cuando Diego modifica algo.
+- **Pizarras:** una edición parchea el dato crudo solo del bloque tocado; nunca reescribe bloques que Diego no tocó (conserva campos extra/desconocidos y entradas que no son objeto). Un `.canvas` inválido o vacío se abre en solo lectura y nunca se sobrescribe. Los cambios de Diego y los de Claude se fusionan por bloque (hook de merge de `useDocument`), no por archivo completo. Las notas cuyo Markdown el editor no puede conservar quedan en solo lectura.
+- **Accesibilidad de bloques:** el estado de un bloque (p. ej. hecho/en curso/pendiente, opción elegida) se distingue sin depender solo del color, y todo control es alcanzable con teclado.
 - **Rutas seguras.** Ningún comando acepta rutas que salgan de la raíz del workspace (`..`, absolutas, symlinks hacia afuera).
 - **Borrar manda a la papelera**, nunca elimina definitivo.
 - Interfaz en español; código, identificadores y commits en inglés.
@@ -91,8 +96,13 @@ Entorno: Node solo por nvm (`source ~/.nvm/nvm.sh`), Rust por rustup (`~/.cargo/
 
 ## 7. Decisiones tomadas por Claude (Diego puede cambiarlas)
 - Workspace dentro del proyecto pero ignorado por git: `~/Documents/TYPES.nosync/espacios` (cambio pedido por Diego; antes estaba fuera del repo).
-- Tiptap + Markdown como editor.
-- Agente embebido con `acceptEdits` y sin Bash en la fase 1.
+- Tiptap + Markdown como editor de notas `.md` (ya no es el formato de página nuevo; ver pizarra).
+- Pizarra en formato JSON Canvas `.canvas` con bloques extra (`table`, `chart`, `timeline`, `decision`); los tipos desconocidos se conservan sin tocar.
+- `@xyflow/react` en vez de tldraw (licencia). Su atribución está oculta vía `proOptions`: la licencia MIT lo permite, pero React Flow pide mantenerla visible si no se patrocina. Diego debe saberlo y puede cambiarlo.
+- `recharts` para las gráficas.
+- Fusión por bloque con el hook de merge de `useDocument` en vez de un conflicto de archivo completo, para que moverse un bloque y que Claude escriba otro no pierda nada.
+- En un bloque `decision`, `chosen` se guarda por nombre de opción; un `chosen` huérfano se conserva y se avisa, nunca se borra en silencio.
+- Agente embebido con `acceptEdits`; Bash/Skill/Agent/NotebookEdit se habilitaron después por decisión de Diego (ver Integración con Claude Code).
 - Un proceso de Claude por mensaje con `--resume`, en lugar de un proceso vivo.
 - Editor (`@tiptap/markdown` 3.x): al primer guardado normaliza la sintaxis (viñetas a `-`, tablas realineadas, sin salto de línea final); no se escribe nada hasta que Diego edita. Las páginas con YAML, comentarios HTML, bloques HTML o notas al pie se abren en solo lectura porque el editor las corrompería (Diego puede forzar la edición). Imágenes en disco: ruta relativa a la carpeta de la página (`adjuntos/a.png`, o `../adjuntos/a.png` en subcarpetas).
 
