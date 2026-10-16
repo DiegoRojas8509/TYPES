@@ -83,8 +83,15 @@ export const api = {
 
   claudeStatus: () => invoke<ClaudeStatus>("claude_status"),
   /** Resolves with the run id used by `claude-event`. */
-  claudeSend: (space: string, text: string, attachments: string[], sessionId: string | null, model: string | null = null) =>
-    invoke<number>("claude_send", { space, text, attachments, sessionId, model: model || null }),
+  /** `board` is the open `.canvas` relative to the space folder (Claude's cwd), or null. */
+  claudeSend: (
+    space: string,
+    text: string,
+    attachments: string[],
+    sessionId: string | null,
+    model: string | null,
+    board: string | null,
+  ) => invoke<number>("claude_send", { space, text, attachments, sessionId, model: model || null, board }),
   claudeStop: (runId: number) => invoke<void>("claude_stop", { runId }),
 };
 

@@ -98,7 +98,7 @@ describe("ChatPanel", () => {
     fireEvent.change(screen.getByLabelText("Modelo de Claude"), { target: { value: "opus" } });
     await type("hola");
     fireEvent.keyDown(screen.getByLabelText("Mensaje para Claude"), { key: "Enter" });
-    await waitFor(() => expect(mocked.claudeSend).toHaveBeenCalledWith("Ropa", "hola", [], null, "opus"));
+    await waitFor(() => expect(mocked.claudeSend).toHaveBeenCalledWith("Ropa", "hola", [], null, "opus", null));
     localStorage.removeItem("types.model");
   });
 
@@ -114,7 +114,7 @@ describe("ChatPanel", () => {
     fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
     expect(mocked.claudeSend).not.toHaveBeenCalled();
     fireEvent.keyDown(box, { key: "Enter" });
-    await waitFor(() => expect(mocked.claudeSend).toHaveBeenCalledWith("Ropa", "costea la tela", [], null, ""));
+    await waitFor(() => expect(mocked.claudeSend).toHaveBeenCalledWith("Ropa", "costea la tela", [], null, "", null));
     expect(await screen.findByText("costea la tela")).toBeInTheDocument();
     expect(box).toHaveValue("");
   });
@@ -150,7 +150,7 @@ describe("ChatPanel", () => {
     mocked.claudeSend.mockResolvedValue(2);
     await type("otra cosa");
     fireEvent.click(screen.getByRole("button", { name: "Enviar" }));
-    await waitFor(() => expect(mocked.claudeSend).toHaveBeenLastCalledWith("Ropa", "otra cosa", [], "sess-1", ""));
+    await waitFor(() => expect(mocked.claudeSend).toHaveBeenLastCalledWith("Ropa", "otra cosa", [], "sess-1", "", null));
   });
 
   it("does not render raw HTML from the assistant", async () => {
@@ -255,7 +255,7 @@ describe("ChatPanel", () => {
     expect(screen.getByRole("button", { name: "Enviar" })).toBeEnabled(); // attachments alone are enough
     await type("mira esta tela");
     fireEvent.click(screen.getByRole("button", { name: "Enviar" }));
-    await waitFor(() => expect(mocked.claudeSend).toHaveBeenCalledWith("Ropa", "mira esta tela", ["adjuntos/foto.png"], null, ""));
+    await waitFor(() => expect(mocked.claudeSend).toHaveBeenCalledWith("Ropa", "mira esta tela", ["adjuntos/foto.png"], null, "", null));
     expect(mocked.saveAttachment).toHaveBeenCalledWith("Ropa", "foto.png", expect.any(Uint8Array));
     // the transcript chip opens the workspace-relative path
     fireEvent.click(await screen.findByTitle("Abrir Ropa/adjuntos/foto.png"));
@@ -275,5 +275,35 @@ describe("ChatPanel", () => {
     expect(mocked.claudeSend).not.toHaveBeenCalled();
     await waitFor(() => expect(screen.getByLabelText("Mensaje para Claude")).toHaveValue("mensaje importante"));
     expect(screen.getByText("a.png")).toBeInTheDocument();
+  });
+  describe("open board context", () => {
+    const sendWith = async (openPath: string | null) => {
+      act(() => useApp.setState({ openPath }));
+      render(<ChatPanel />);
+      await send("agrega una tabla");
+    };
+
+    it("passes the board path relative to the space folder", async () => {
+      await sendWith("Ropa/Plan.canvas");
+      expect(mocked.claudeSend).toHaveBeenCalledWith("Ropa", "agrega una tabla", [], null, "", "Plan.canvas");
+    });
+
+    it("keeps subfolders in the relative path", async () => {
+      await sendWith("Ropa/sub/Plan.canvas");
+      expect(mocked.claudeSend).toHaveBeenCalledWith("Ropa", "agrega una tabla", [], null, "", "sub/Plan.canvas");
+    });
+
+    it.each([["a markdown page", "Ropa/Notas.md"], ["a board of another space", "Comida/Plan.canvas"], ["nothing open", null]])(
+      "passes null for %s",
+      async (_name, openPath) => {
+        await sendWith(openPath);
+        expect(mocked.claudeSend).toHaveBeenCalledWith("Ropa", "agrega una tabla", [], null, "", null);
+      },
+    );
+
+    it("passes null for a board that sits at the workspace root (no space folder)", async () => {
+      await sendWith("Ropa.canvas");
+      expect(mocked.claudeSend).toHaveBeenCalledWith("Ropa", "agrega una tabla", [], null, "", null);
+    });
   });
 });

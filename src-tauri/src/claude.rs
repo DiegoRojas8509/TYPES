@@ -73,8 +73,19 @@ pub fn shell_lookup() -> Option<PathBuf> {
 
 /// The prompt is passed after `--` so it can never be taken for an option value
 /// (`--allowedTools` is variadic) or for a flag when the text starts with `-`.
-pub fn build_args(text: &str, attachments: &[String], session_id: Option<&str>, model: Option<&str>) -> Vec<String> {
-    let mut prompt = text.to_string();
+/// With `board` (path relative to the space folder, the agent's cwd) the prompt starts with
+/// `Pizarra abierta: <board>` so Claude knows which whiteboard Diego is looking at.
+pub fn build_args(
+    text: &str,
+    attachments: &[String],
+    session_id: Option<&str>,
+    model: Option<&str>,
+    board: Option<&str>,
+) -> Vec<String> {
+    let mut prompt = match board {
+        Some(b) => format!("Pizarra abierta: {b}\n\n{text}"),
+        None => text.to_string(),
+    };
     if !attachments.is_empty() {
         prompt.push_str("\n\nArchivos adjuntos (léelos con Read):");
         for a in attachments {
@@ -223,13 +234,14 @@ pub fn claude_send(
     attachments: Vec<String>,
     session_id: Option<String>,
     model: Option<String>,
+    board: Option<String>,
 ) -> Result<u32> {
     let cwd = workspace::resolve(&state.root(), &space)?;
     if !cwd.is_dir() {
         return Err(AppError::Invalid("el espacio no es una carpeta".into()));
     }
     let bin = locate(&state.snapshot()).ok_or_else(claude_not_found)?;
-    let args = build_args(&text, &attachments, session_id.as_deref(), model.as_deref());
+    let args = build_args(&text, &attachments, session_id.as_deref(), model.as_deref(), board.as_deref());
     let mut child = Command::new(&bin)
         .args(&args)
         .current_dir(&cwd)
@@ -349,7 +361,7 @@ mod tests {
 
     #[test]
     fn build_args_has_required_flags_and_bash() {
-        let a = build_args("Responde solo: ok", &[], None, None);
+        let a = build_args("Responde solo: ok", &[], None, None, None);
         assert_eq!(a.first().map(String::as_str), Some("-p"));
         for f in ["--output-format", "stream-json", "--verbose", "--include-partial-messages", "--permission-mode", "acceptEdits", "--allowedTools"] {
             assert!(a.iter().any(|x| x == f), "missing {f}");
@@ -365,18 +377,18 @@ mod tests {
 
     #[test]
     fn build_args_adds_model_only_when_safe() {
-        let a = build_args("hola", &[], None, Some("opus"));
+        let a = build_args("hola", &[], None, Some("opus"), None);
         let i = a.iter().position(|x| x == "--model").expect("--model");
         assert_eq!(a[i + 1], "opus");
         for bad in ["", "--version", "a b", "x;y"] {
-            assert!(!build_args("hola", &[], None, Some(bad)).iter().any(|x| x == "--model"), "{bad}");
+            assert!(!build_args("hola", &[], None, Some(bad), None).iter().any(|x| x == "--model"), "{bad}");
         }
-        assert!(!build_args("hola", &[], None, None).iter().any(|x| x == "--model"));
+        assert!(!build_args("hola", &[], None, None, None).iter().any(|x| x == "--model"));
     }
 
     #[test]
     fn build_args_adds_resume() {
-        let a = build_args("hola", &[], Some("abc-123"), None);
+        let a = build_args("hola", &[], Some("abc-123"), None, None);
         let i = a.iter().position(|x| x == "--resume").unwrap();
         assert_eq!(a[i + 1], "abc-123");
         assert!(i < a.iter().position(|x| x == "--").unwrap());
@@ -384,7 +396,7 @@ mod tests {
 
     #[test]
     fn build_args_lists_attachments() {
-        let a = build_args("mira", &["Ropa/adjuntos/a b.png".into(), "Ropa/adjuntos/c.png".into()], None, None);
+        let a = build_args("mira", &["Ropa/adjuntos/a b.png".into(), "Ropa/adjuntos/c.png".into()], None, None, None);
         assert_eq!(
             a.last().unwrap(),
             "mira\n\nArchivos adjuntos (léelos con Read):\n- Ropa/adjuntos/a b.png\n- Ropa/adjuntos/c.png"
@@ -392,8 +404,48 @@ mod tests {
     }
 
     #[test]
+    fn build_args_puts_the_open_board_before_the_message() {
+        let a = build_args("agrega una tabla", &[], None, None, Some("Plan.canvas"));
+        assert_eq!(a.last().unwrap(), "Pizarra abierta: Plan.canvas\n\nagrega una tabla");
+        let n = a.len();
+        assert_eq!(a[n - 2], "--");
+        // Every flag is still there.
+        let without = build_args("agrega una tabla", &[], None, None, None);
+        assert_eq!(a[..n - 1], without[..without.len() - 1]);
+    }
+
+    #[test]
+    fn build_args_without_board_is_unchanged() {
+        let a = build_args("hola", &[], None, None, None);
+        assert_eq!(a.last().unwrap(), "hola");
+        assert!(!a.last().unwrap().contains("Pizarra abierta"));
+    }
+
+    #[test]
+    fn build_args_board_and_attachments_compose() {
+        let a = build_args("mira", &["adjuntos/a.png".into()], Some("s1"), Some("opus"), Some("sub/Plan.canvas"));
+        assert_eq!(
+            a.last().unwrap(),
+            "Pizarra abierta: sub/Plan.canvas\n\nmira\n\nArchivos adjuntos (léelos con Read):\n- adjuntos/a.png"
+        );
+        assert!(a.iter().any(|x| x == "--resume"));
+        assert!(a.iter().any(|x| x == "--model"));
+    }
+
+    #[test]
+    fn build_args_board_name_is_passed_verbatim() {
+        let name = r#"Mi "plan" (v2) $HOME;x.canvas"#;
+        let a = build_args("hola", &[], None, None, Some(name));
+        assert_eq!(a.last().unwrap(), &format!("Pizarra abierta: {name}\n\nhola"));
+        // A board name that looks like a flag still sits behind `--`.
+        let b = build_args("hola", &[], None, None, Some("--version"));
+        assert_eq!(b[b.len() - 2], "--");
+        assert_eq!(b.last().unwrap(), "Pizarra abierta: --version\n\nhola");
+    }
+
+    #[test]
     fn build_args_prompt_starting_with_dash_is_safe() {
-        let a = build_args("--version", &[], None, None);
+        let a = build_args("--version", &[], None, None, None);
         assert_eq!(&a[a.len() - 2..], ["--", "--version"]);
     }
 

@@ -4,6 +4,7 @@
 import { create } from "zustand";
 import { api, errorMessage, isApiError, onClaudeEvent, type ClaudeEvent, type UnlistenFn } from "../../lib/api";
 import { getModel } from "../../lib/model";
+import { kindOf, spaceOf } from "../../lib/paths";
 import { useApp } from "../../store/app";
 import {
   type ChatAction,
@@ -99,6 +100,13 @@ function bindRun(runId: number, space: string) {
   early.delete(runId);
 }
 
+/** The open board as Claude sees it (relative to the space folder), or null if none belongs to `space`. */
+function openBoardIn(space: string): string | null {
+  const open = useApp.getState().openPath;
+  if (open === null || kindOf(open) !== "canvas" || spaceOf(open) !== space || !open.startsWith(`${space}/`)) return null;
+  return open.slice(space.length + 1);
+}
+
 function isNotFound(e: unknown) {
   return isApiError(e) && e.kind === "claude_not_found";
 }
@@ -125,6 +133,8 @@ export const useChats = create<ChatsState>()((set, get) => ({
     get().ensure(space);
     if (get().conversations[space]?.running) return false;
     dispatch(space, { kind: "begin" });
+    // Read now: saving images below awaits, and Diego may switch pages meanwhile.
+    const board = openBoardIn(space);
 
     const root = useApp.getState().settings?.workspaceRoot ?? "";
     const attachments: string[] = [];
@@ -146,7 +156,7 @@ export const useChats = create<ChatsState>()((set, get) => ({
     try {
       await ensureListening();
       const sessionId = get().conversations[space]?.sessionId ?? null;
-      const runId = await api.claudeSend(space, text, forAgent, sessionId, getModel());
+      const runId = await api.claudeSend(space, text, forAgent, sessionId, getModel(), board);
       bindRun(runId, space);
       set({ claudeMissing: false });
       if (get().conversations[space]?.stopRequested) void api.claudeStop(runId).catch(() => {});

@@ -20,6 +20,7 @@ import { titleOf } from "../../lib/paths";
 import { useDocument, type DocStatus } from "../editor/useDocument";
 import { defaultNode, type BlockKind } from "./addMenu";
 import { BlockMenu } from "./BlockMenu";
+import { OrderButton } from "./OrderButton";
 import { BoardActionsContext, BoardContext, type BoardActions } from "./boardActions";
 import {
   fromFlow,
@@ -245,6 +246,7 @@ function Board({ path }: { path: string }) {
               {STATUS_LABEL[doc.status]}
             </span>
           )}
+          <OrderButton path={path} editable={editable} />
           {editable && (
             <button
               type="button"

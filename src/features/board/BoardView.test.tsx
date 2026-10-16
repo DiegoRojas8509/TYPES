@@ -13,6 +13,8 @@ vi.mock("../../lib/api", async (importOriginal) => {
 import { api } from "../../lib/api";
 import { parseCanvas } from "../../lib/canvas";
 import { initialState, useApp } from "../../store/app";
+import { useChats } from "../chat/conversations";
+import { initialChat } from "../chat/reducer";
 import { AUTOSAVE_MS } from "../editor/useDocument";
 import { BoardView } from "./BoardView";
 
@@ -244,5 +246,76 @@ describe("BoardView (mounted under jsdom)", () => {
     await wait(AUTOSAVE_MS * 5);
     expect(api.writeText).not.toHaveBeenCalled();
     expect(screen.getByRole("alert")).toHaveTextContent("Esta pizarra no se puede abrir:");
+  });
+});
+
+describe("Ordenar con Claude", () => {
+  const SENTENCE =
+    'Reorganiza la pizarra "Plan": agrupa por tema con zonas (group), alinea y deja espacio entre bloques. No borres ni cambies el contenido de ningún bloque; solo x, y, width, height y las zonas nuevas.';
+  const send = vi.fn().mockResolvedValue(true);
+  const button = () => screen.getByRole("button", { name: "Ordenar con Claude" });
+
+  beforeEach(() => {
+    send.mockClear();
+    useChats.setState({ conversations: {}, send });
+  });
+
+  it("sends the fixed sentence through the chat store, naming the board without extension", async () => {
+    await open(EMPTY);
+    expect(button()).toBeEnabled();
+    await act(async () => {
+      fireEvent.click(button());
+    });
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledWith("Ropa", SENTENCE, []);
+  });
+
+  it("uses the name of a board in a subfolder without its path", async () => {
+    disk = EMPTY;
+    render(<BoardView path="Ropa/sub/Verano 2027.canvas" />);
+    await settle();
+    await act(async () => {
+      fireEvent.click(button());
+    });
+    expect(send.mock.calls[0][1]).toContain('la pizarra "Verano 2027":');
+    expect(send.mock.calls[0][0]).toBe("Ropa");
+  });
+
+  it("is disabled, with the reason, while Claude is running in that space and does not send", async () => {
+    useChats.setState({ conversations: { Ropa: { ...initialChat(), running: true } } });
+    await open(EMPTY);
+    expect(button()).toBeDisabled();
+    expect(button()).toHaveAttribute("title", "Claude está trabajando; espera a que termine");
+    await act(async () => {
+      fireEvent.click(button());
+    });
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("ignores a run in another space", async () => {
+    useChats.setState({ conversations: { Comida: { ...initialChat(), running: true } } });
+    await open(EMPTY);
+    expect(button()).toBeEnabled();
+  });
+
+  it("is disabled, with the reason, when the board cannot be opened, and never writes", async () => {
+    await open("{");
+    expect(button()).toBeDisabled();
+    expect(button()).toHaveAttribute("title", "La pizarra no se puede editar");
+    await act(async () => {
+      fireEvent.click(button());
+    });
+    expect(send).not.toHaveBeenCalled();
+    await wait(AUTOSAVE_MS * 5);
+    expect(api.writeText).not.toHaveBeenCalled();
+  });
+
+  it("clicking it never writes the board itself", async () => {
+    await open(EMPTY);
+    await act(async () => {
+      fireEvent.click(button());
+    });
+    await wait(AUTOSAVE_MS * 5);
+    expect(api.writeText).not.toHaveBeenCalled();
   });
 });
