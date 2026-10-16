@@ -64,8 +64,46 @@ describe("TableNode", () => {
     expect(id).toBe("n1");
     expect(patch).toEqual({ columns: ["Concepto", "Valor"], rows: [["Tela", "15"], ["Hilo", "3"]] });
     expect(patch.rows).not.toBe(node.rows);
-    expect(patch.rows[1]).not.toBe((node.rows as string[][])[1]);
+    // only the edited row is rebuilt; the other row is carried over as it was
+    expect(patch.rows[0]).not.toBe((node.rows as string[][])[0]);
+    expect(patch.rows[1]).toBe((node.rows as string[][])[1]);
     expect(node).toEqual(original);
+  });
+
+  it("shows an object row, an object cell and a null row read-only without throwing, and never as [object Object]", () => {
+    const spy = vi.spyOn(console, "error");
+    const { container } = render(
+      board(table({ rows: [{ Concepto: "Tela", Valor: 12 }, ["Hilo", { precio: 3 }], null, ["Botón", 5]] as never })),
+    );
+    expect(cell(container, 1, 1).value).toBe("Tela");
+    expect(cell(container, 1, 2).value).toBe("12");
+    expect(cell(container, 1, 1)).toBeDisabled();
+    expect(cell(container, 1, 1)).toHaveAttribute("title", "Fila en otro formato; edítala desde el chat");
+    expect(cell(container, 2, 2).value).toBe('{"precio":3}');
+    expect(cell(container, 2, 2)).toBeDisabled();
+    expect(cell(container, 2, 1)).not.toBeDisabled();
+    expect(cell(container, 3, 1)).toBeDisabled();
+    expect(cell(container, 4, 2)).not.toBeDisabled();
+    expect(container.innerHTML).not.toContain("[object Object]");
+    expect(update).not.toHaveBeenCalled();
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it("editing one cell leaves object rows, object cells, numbers and nulls exactly as found", () => {
+    const obj = { Concepto: "Tela", Valor: 12 };
+    const inner = { precio: 3 };
+    const hilo = ["Hilo", inner];
+    const node = table({ rows: [obj, hilo, null, ["Botón", 5]] as never });
+    const { container } = render(board(node));
+    fireEvent.change(cell(container, 4, 1), { target: { value: "Cierre" } });
+    expect(update).toHaveBeenCalledTimes(1);
+    const [, patch] = update.mock.calls[0];
+    expect(patch.columns).toEqual(["Concepto", "Valor"]);
+    expect(patch.rows).toEqual([obj, ["Hilo", inner], null, ["Cierre", 5]]);
+    expect(patch.rows[0]).toBe(obj);
+    expect(patch.rows[1]).toBe(hilo);
+    expect(patch.rows[3][1]).toBe(5);
   });
 
   it("editing a header calls update with the new columns", () => {
@@ -145,7 +183,7 @@ describe("TableNode", () => {
     expect(update).not.toHaveBeenCalled();
   });
 
-  it("renders malformed data without throwing; an edit writes normalized rows and loses no cell", () => {
+  it("renders malformed data without throwing; an edit rewrites only the edited row and loses no cell", () => {
     const node = make({
       type: "table",
       columns: ["A", "B"],
@@ -159,12 +197,11 @@ describe("TableNode", () => {
     expect(head(container, 3).value).toBe("");
     expect(cell(container, 2, 2).value).toBe("");
     expect(cell(container, 3, 1).value).toBe("raro");
+    expect(cell(container, 3, 1)).toBeDisabled();
     expect(update).not.toHaveBeenCalled();
     fireEvent.change(cell(container, 2, 1), { target: { value: "x" } });
-    expect(update).toHaveBeenCalledWith("n1", {
-      columns: ["A", "B", ""],
-      rows: [["1", "2", "3"], ["x", "", ""], ["raro", "", ""], ["", "", ""]],
-    });
+    // only row 2 changes; the numbers, the string row and the null cells stay as found
+    expect(update).toHaveBeenCalledWith("n1", { columns: ["A", "B"], rows: [[1, 2, 3], ["x"], "raro", [null, undefined]] });
   });
 
   it("renders a node with no rows or columns at all", () => {

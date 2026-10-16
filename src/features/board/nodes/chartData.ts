@@ -32,10 +32,9 @@ export interface PreparedChart {
   pie: { slices: PieSlice[]; seriesName: string; extraSeries: boolean };
 }
 
-export type ChartRaw = Record<string, unknown>;
-type Raw = ChartRaw;
+import { cellText as text, isObj, type Raw } from "./raw";
 
-const isObj = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v);
+export type ChartRaw = Raw;
 
 /** Finite numbers and strings that parse as one ("12.5"); anything else is a gap. */
 function toNumber(v: unknown): number | null {
@@ -46,8 +45,6 @@ function toNumber(v: unknown): number | null {
   }
   return null;
 }
-
-const text = (v: unknown): string => String(v ?? "");
 
 function readSeries(raw: unknown, labelCount: number): PreparedSeries[] {
   if (!Array.isArray(raw)) return [];

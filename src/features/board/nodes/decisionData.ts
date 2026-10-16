@@ -8,6 +8,8 @@
 // never mutates. `chosen` is keyed by option NAME (that is the file format), so
 // duplicate names are shown with a hint, never silently disambiguated.
 
+import { isObj, list, text, type Raw } from "./raw";
+
 export type Side = "pros" | "cons";
 
 export interface OptionRow {
@@ -32,11 +34,7 @@ export type OptionsPatch = {
   chosen?: string | undefined;
 };
 
-type Raw = Record<string, unknown>;
-const isObj = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v);
-const rawOptions = (raw: Raw): unknown[] => (Array.isArray(raw.options) ? raw.options : []);
-const text = (v: unknown): string => (typeof v === "string" ? v : typeof v === "number" ? String(v) : "");
-const list = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
+const rawOptions = (raw: Raw): unknown[] => list(raw.options);
 
 function optionRow(opt: unknown): OptionRow {
   if (!isObj(opt)) return { name: text(opt), pros: [], cons: [] };

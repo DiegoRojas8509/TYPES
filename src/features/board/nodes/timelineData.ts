@@ -8,6 +8,8 @@
 //    unknown fields survive, and every other entry (even a string or null) is
 //    carried over by identity. Each helper returns a NEW array and never mutates.
 
+import { isObj, list, text, type Raw } from "./raw";
+
 export const STATUSES = ["hecho", "en curso", "pendiente"] as const;
 export type Status = (typeof STATUSES)[number];
 export type ItemField = "date" | "title" | "detail" | "status";
@@ -22,12 +24,7 @@ export interface TimelineRow {
   known: boolean;
 }
 
-type Raw = Record<string, unknown>;
-const isObj = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v);
-const rawItems = (raw: Raw): unknown[] => (Array.isArray(raw.items) ? raw.items : []);
-
-/** Strings as they are, numbers as text, anything else empty. */
-const text = (v: unknown): string => (typeof v === "string" ? v : typeof v === "number" ? String(v) : "");
+const rawItems = (raw: Raw): unknown[] => list(raw.items);
 
 function rowOf(item: unknown): TimelineRow {
   if (!isObj(item)) return { date: "", title: text(item), detail: "", status: "pendiente", known: true };

@@ -5,27 +5,33 @@ import { useBoardActions } from "../boardActions";
 import type { FlowNode } from "../boardModel";
 import { BlockShell } from "./BlockShell";
 import { GlyphTable } from "./glyphs";
-import { addColumn, addRow, deleteColumn, deleteRow, numericColumns, setCell, setHeader, tableView, type TableData } from "./tableData";
+import { addColumn, addRow, deleteColumn, deleteRow, numericColumns, setCell, setHeader, tableLocks, tableView, type TablePatch } from "./tableData";
 import { TitleInput } from "./TitleInput";
 import { useScrollable } from "./useScrollable";
 
+const LOCKED_ROW = "Fila en otro formato; edítala desde el chat";
+const LOCKED_CELL = "Celda en otro formato; edítala desde el chat";
+
 /**
  * Editable table. `columns` and `rows` can arrive ragged or with non-strings
- * (hand-written or edited by Claude): the view pads/truncates and coerces for
- * display only, and the first edit writes back what is shown as NEW arrays (never
- * dropping a cell, see tableData.ts). Opening, selecting, focusing and blurring
- * never write. The delete buttons are ordinary tab stops: Tab walks a row's
- * cells and then reaches its delete button.
+ * (hand-written or edited by Claude): the view pads and coerces for display only,
+ * and an edit patches the raw arrays so everything it did not touch is written back
+ * as found (see tableData.ts). Rows that are not arrays and object or array cells are
+ * shown read-only: a keystroke here can never rewrite them. Opening, selecting,
+ * focusing and blurring never write. The delete buttons are ordinary tab stops: Tab
+ * walks a row's cells and then reaches its delete button.
  */
 export function TableNode({ id, data, selected }: NodeProps<FlowNode>) {
   const { update } = useBoardActions();
   const title = typeof data.title === "string" ? data.title : "";
   const view = useMemo(() => tableView(data), [data]);
   const numeric = useMemo(() => numericColumns(view.columns, view.rows), [view]);
+  const locks = useMemo(() => tableLocks(data), [data]);
+  const rawRows: unknown[] = Array.isArray(data.rows) ? data.rows : [];
   const [scrollRef, scrollable] = useScrollable<HTMLDivElement>();
   const gridRef = useRef<HTMLTableElement>(null);
 
-  const write = (t: TableData) => update(id, { columns: t.columns, rows: t.rows });
+  const write = (t: TablePatch) => update(id, { columns: t.columns, rows: t.rows });
 
   // Enter moves to the cell below in the same column (the header counts as row 0).
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>, row: number, col: number) => {
@@ -63,6 +69,8 @@ export function TableNode({ id, data, selected }: NodeProps<FlowNode>) {
                         data-c={c}
                         value={h}
                         placeholder="Columna"
+                        disabled={locks.headers[c]}
+                        title={locks.headers[c] ? LOCKED_CELL : undefined}
                         onChange={(e) => write(setHeader(data, c, e.target.value))}
                         onKeyDown={(e) => onKeyDown(e, 0, c)}
                       />
@@ -93,6 +101,8 @@ export function TableNode({ id, data, selected }: NodeProps<FlowNode>) {
                         data-r={r + 1}
                         data-c={c}
                         value={v}
+                        disabled={locks.rows[r][c]}
+                        title={locks.rows[r][c] ? (Array.isArray(rawRows[r]) ? LOCKED_CELL : LOCKED_ROW) : undefined}
                         onChange={(e) => write(setCell(data, r, c, e.target.value))}
                         onKeyDown={(e) => onKeyDown(e, r + 1, c)}
                       />

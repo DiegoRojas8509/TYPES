@@ -17,7 +17,7 @@ import { BoardView } from "./BoardView";
 const PATH = "Ropa/Plan.canvas";
 const BOARD = JSON.stringify({
   nodes: [
-    { id: "t1", type: "table", x: 0, y: 0, width: 360, height: 200, title: "Costos", columns: ["Concepto", "Valor"], rows: [["Tela", 12], ["Hilo"]] },
+    { id: "t1", type: "table", x: 0, y: 0, width: 360, height: 200, title: "Costos", columns: ["Concepto", "Valor"], rows: [["Tela", 12], ["Hilo"], { Concepto: "Botón", Valor: 3 }, null] },
     { id: "c1", type: "chart", x: 400, y: 0, width: 360, height: 240, title: "Ventas", kind: "bar", labels: ["A", "B"], series: [{ name: "S", values: [1] }] },
   ],
   edges: [],
@@ -55,14 +55,19 @@ describe("BoardView with data blocks", () => {
     }
   });
 
-  it("editing a table cell writes it to the board (normalized), keeping the chart node untouched", async () => {
+  it("editing a table cell writes only that cell: untouched rows (numbers, objects, null) come back as found, and the chart node too", async () => {
     render(<BoardView path={PATH} />);
     await wait(0);
+    expect(screen.getByLabelText("Fila 3, columna 1")).toBeDisabled();
     fireEvent.change(screen.getByLabelText("Fila 2, columna 1"), { target: { value: "Botones" } });
     await wait(AUTOSAVE_MS);
     expect(api.writeText).toHaveBeenCalledTimes(1);
     const parsed = parseCanvas(vi.mocked(api.writeText).mock.calls[0][1]);
-    expect(parsed.ok && parsed.doc.nodes[0]).toMatchObject({ id: "t1", rows: [["Tela", "12"], ["Botones", ""]] });
+    expect(parsed.ok && parsed.doc.nodes[0]).toMatchObject({
+      id: "t1",
+      columns: ["Concepto", "Valor"],
+      rows: [["Tela", 12], ["Botones"], { Concepto: "Botón", Valor: 3 }, null],
+    });
     expect(parsed.ok && parsed.doc.nodes[1]).toMatchObject({ id: "c1", series: [{ name: "S", values: [1] }] });
   });
 });
