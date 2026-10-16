@@ -7,7 +7,7 @@ import { useApp } from "../../store/app";
 import { createExtensions } from "../../lib/extensions";
 import { pathFromAssetUrl, relativeSrc, resolveImageSrc, unresolveImageSrc, unsupportedSyntax } from "../../lib/markdown";
 import { SlashCommand } from "./slash";
-import { useDocument, type DocStatus, type UseDocument } from "./useDocument";
+import { useDocument, type DocStatus, type UseDocument } from "../../lib/useDocument";
 
 const STATUS_LABEL: Record<DocStatus, string> = {
   loading: "Abriendo…",

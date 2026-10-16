@@ -1,13 +1,13 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../../lib/api", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../lib/api")>();
+vi.mock("./api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./api")>();
   return { ...actual, api: { ...actual.api, readText: vi.fn(), writeText: vi.fn() } };
 });
 
-import { api } from "../../lib/api";
-import { initialState, useApp } from "../../store/app";
+import { api } from "./api";
+import { initialState, useApp } from "../store/app";
 import { AUTOSAVE_MS, useDocument, type MergeFn } from "./useDocument";
 
 const readText = vi.mocked(api.readText);

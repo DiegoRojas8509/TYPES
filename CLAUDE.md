@@ -62,7 +62,8 @@ espacios/
 | `settings.rs` | Ajustes persistentes (raíz del workspace, ruta manual del binario). |
 
 ### Frontend (`src/`)
-`lib/api.ts` (única puerta a `invoke` y eventos) · `store/` · `features/sidebar` · `features/editor` (notas `.md`) · `features/board` (pizarra y sus bloques; lógica de formato en `lib/canvas.ts`) · `features/viewer` · `features/chat`. Cada feature es dueña de sus componentes y su lógica; no se importan entre sí, se comunican por el store.
+`lib/api.ts` (única puerta a `invoke` y eventos) · `lib/useDocument.ts` (máquina de estados de un archivo abierto, compartida por notas y pizarras) · `store/` · `features/sidebar` · `features/editor` (notas `.md`) · `features/board` (pizarra y sus bloques; lógica de formato en `lib/canvas.ts`) · `features/viewer` · `features/chat` · `features/shell` (router de documentos `DocumentPane`, avisos, iconos y paneles).
+Cada feature es dueña de sus componentes y su lógica. Se comunican por los stores de zustand: importar el módulo de STORE de otra feature (p. ej. `features/chat/conversations`) es el canal permitido; importar sus componentes no. `features/shell` es el router: es el único lugar que puede montar los componentes de entrada de las features (`DocumentPane` monta editor, pizarra y visores), y sus iconos son piezas compartidas que cualquier feature puede importar.
 
 ### Integración con Claude Code
 - Binario, en este orden: ruta manual en ajustes → `claude` en el PATH del shell de login → la extensión de VS Code más reciente en `~/.vscode/extensions/anthropic.claude-code-*/resources/native-binary/claude`. (En esta Mac hoy solo existe la tercera.)

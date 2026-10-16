@@ -4,7 +4,7 @@ import { BoardView } from "../board/BoardView";
 import { FileFallback } from "../viewer/FileFallback";
 import { HtmlViewer } from "../viewer/HtmlViewer";
 import { ImageViewer } from "../viewer/ImageViewer";
-import { MarkdownEditor } from "./Editor";
+import { MarkdownEditor } from "../editor/Editor";
 
 /**
  * Middle pane: picks the renderer for `openPath` (workspace-relative) by file kind.

@@ -17,7 +17,7 @@ import {
 } from "@xyflow/react";
 import { mergeCanvasText, newId, parseCanvas, serializeCanvas, type CanvasNode } from "../../lib/canvas";
 import { titleOf } from "../../lib/paths";
-import { useDocument, type DocStatus } from "../editor/useDocument";
+import { useDocument, type DocStatus } from "../../lib/useDocument";
 import { defaultNode, type BlockKind } from "./addMenu";
 import { BlockMenu } from "./BlockMenu";
 import { OrderButton } from "./OrderButton";

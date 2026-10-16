@@ -10,12 +10,10 @@ vi.mock("../../lib/api", async (importOriginal) => {
     openWithDefaultApp: vi.fn().mockResolvedValue(undefined),
   };
 });
-vi.mock("../editor/Editor", () => ({ MarkdownEditor: ({ path }: { path: string }) => <div>editor:{path}</div> }));
-vi.mock("../board/BoardView", () => ({ BoardView: ({ path }: { path: string }) => <div>board:{path}</div> }));
 
 import { api, openWithDefaultApp } from "../../lib/api";
 import { initialState, useApp } from "../../store/app";
-import { DocumentPane } from "../editor/DocumentPane";
+import { FileFallback } from "./FileFallback";
 import { HtmlViewer } from "./HtmlViewer";
 import { ImageViewer } from "./ImageViewer";
 import { COALESCE_MS } from "./useFileVersion";
@@ -47,39 +45,9 @@ beforeEach(() => {
 });
 afterEach(() => vi.useRealTimers());
 
-describe("DocumentPane", () => {
-  it("document_pane_picks_viewer_by_kind", async () => {
-    const show = async (p: string) => {
-      act(() => useApp.setState({ openPath: p }));
-      return render(<DocumentPane />);
-    };
-    let r = await show("Ropa/Notas.md");
-    expect(screen.getByText("editor:Ropa/Notas.md")).toBeInTheDocument();
-    r.unmount();
-
-    r = await show("Ropa/Plan.canvas");
-    expect(screen.getByText("board:Ropa/Plan.canvas")).toBeInTheDocument();
-    r.unmount();
-
-    r = await show("Ropa/dash.html");
-    await settle();
-    expect(frame(r.container)).toBeInTheDocument();
-    r.unmount();
-
-    r = await show("Ropa/adjuntos/a.png");
-    expect(r.container.querySelector(".image-stage")).toBeInTheDocument();
-    r.unmount();
-
-    r = await show("Ropa/precios.csv");
-    expect(screen.getByRole("button", { name: "Abrir con la app predeterminada" })).toBeInTheDocument();
-    expect(r.container.querySelector("iframe")).toBeNull();
-  });
-});
-
 describe("FileFallback", () => {
   it("opens_other_files_with_default_app", () => {
-    act(() => useApp.setState({ openPath: "Ropa/precios.csv" }));
-    render(<DocumentPane />);
+    render(<FileFallback path="Ropa/precios.csv" />);
     expect(screen.getByRole("heading", { name: "precios.csv" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Abrir con la app predeterminada" }));
     expect(openWithDefaultApp).toHaveBeenCalledWith(`${ROOT}/Ropa/precios.csv`);

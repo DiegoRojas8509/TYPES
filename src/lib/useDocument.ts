@@ -1,13 +1,14 @@
-// Document state machine for one open Markdown file. It knows nothing about
-// Tiptap: the editor feeds it Markdown through `onChange` and shows `content`.
+// Document state machine for one open text file (a Markdown note or a `.canvas`).
+// It knows nothing about Tiptap or React Flow: the feature feeds it text through
+// `onChange` and shows `content`.
 //
 //   loading -> clean <-> dirty -> saving -> clean
 //                         \-> conflict (disk changed while there were unsaved edits)
 //   loading -> error (the file could not be read)
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { api, errorMessage } from "../../lib/api";
-import { baseName, joinRel, parentOf } from "../../lib/paths";
-import { useApp, type FsChange } from "../../store/app";
+import { api, errorMessage } from "./api";
+import { baseName, joinRel, parentOf } from "./paths";
+import { useApp, type FsChange } from "../store/app";
 
 export const AUTOSAVE_MS = 800;
 

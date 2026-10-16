@@ -15,7 +15,7 @@ import { parseCanvas } from "../../lib/canvas";
 import { initialState, useApp } from "../../store/app";
 import { useChats } from "../chat/conversations";
 import { initialChat } from "../chat/reducer";
-import { AUTOSAVE_MS } from "../editor/useDocument";
+import { AUTOSAVE_MS } from "../../lib/useDocument";
 import { BoardView } from "./BoardView";
 
 const PATH = "Ropa/Plan.canvas";

@@ -11,7 +11,7 @@ vi.mock("./nodes/ChartCanvas", () => ({ ChartCanvas: () => <div data-testid="cha
 import { api } from "../../lib/api";
 import { parseCanvas } from "../../lib/canvas";
 import { initialState, useApp } from "../../store/app";
-import { AUTOSAVE_MS } from "../editor/useDocument";
+import { AUTOSAVE_MS } from "../../lib/useDocument";
 import { BoardView } from "./BoardView";
 
 const PATH = "Ropa/Plan.canvas";

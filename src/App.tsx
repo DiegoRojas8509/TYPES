@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ChatPanel } from "./features/chat/ChatPanel";
-import { DocumentPane } from "./features/editor/DocumentPane";
+import { DocumentPane } from "./features/shell/DocumentPane";
 import { IconPanel } from "./features/shell/icons";
 import { Notice } from "./features/shell/Notice";
 import { ResizeHandle } from "./features/shell/ResizeHandle";
