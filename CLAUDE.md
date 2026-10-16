@@ -94,6 +94,7 @@ cargo test --manifest-path src-tauri/Cargo.toml
 pnpm tauri build --bundles app   # -> src-tauri/target/release/bundle/macos/Types.app (arrastra al Dock)
 ```
 Entorno: Node solo por nvm (`source ~/.nvm/nvm.sh`), Rust por rustup (`~/.cargo/bin`). Sin Xcode completo: solo Command Line Tools.
+Firma: el build firma con el certificado propio «Types Local Signing» (llavero de inicio de sesión, creado 2026-10-16; `bundle.macOS.signingIdentity`). Así macOS conserva el permiso de Documentos entre builds; si el certificado falta, el build falla: recrearlo o quitar esa clave. Si el build falla buscando `~/Documents/TYPES/...`, es caché vieja de antes de la mudanza: `cargo clean --manifest-path src-tauri/Cargo.toml --release -p tauri`.
 
 ## 7. Decisiones tomadas por Claude (Diego puede cambiarlas)
 - Workspace dentro del proyecto pero ignorado por git: `~/Documents/TYPES.nosync/espacios` (cambio pedido por Diego; antes estaba fuera del repo).
