@@ -18,6 +18,7 @@ vi.mock("../../lib/api", () => ({
 }));
 
 import { api } from "../../lib/api";
+import { TREE_PATH_MIME } from "../../lib/paths";
 import { initialState, useApp } from "../../store/app";
 import { Sidebar } from "./Sidebar";
 
@@ -152,5 +153,25 @@ describe("Sidebar", () => {
     fireEvent.change(input, { target: { value: "Ideas" } });
     fireEvent.keyDown(input, { key: "Enter" });
     await vi.waitFor(() => expect(mocked.renameEntry).toHaveBeenCalledWith("Ropa/Notas.md", "Ideas"));
+  });
+});
+
+describe("Sidebar drag", () => {
+  it("only image rows are draggable and carry their path", () => {
+    useApp.setState({
+      tree: [{ ...tree[0], children: [...tree[0].children, file("Ropa/adjuntos/codigo.png")] }],
+      treeLoaded: true,
+      expanded: { Ropa: true },
+    });
+    render(<Sidebar />);
+    const img = screen.getByText("codigo.png").closest(".tree-row")!;
+    expect(img).toHaveAttribute("draggable", "true");
+    const data: Record<string, string> = {};
+    const dataTransfer = { setData: (k: string, v: string) => (data[k] = v), effectAllowed: "" };
+    fireEvent.dragStart(img, { dataTransfer });
+    expect(data[TREE_PATH_MIME]).toBe("Ropa/adjuntos/codigo.png");
+    expect(dataTransfer.effectAllowed).toBe("copyLink");
+    expect(screen.getByText("Notas").closest(".tree-row")).not.toHaveAttribute("draggable");
+    expect(screen.getByText("Telas").closest(".tree-row")).not.toHaveAttribute("draggable");
   });
 });

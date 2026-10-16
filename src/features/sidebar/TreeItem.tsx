@@ -1,6 +1,6 @@
-import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
+import type { DragEvent, KeyboardEvent, MouseEvent, ReactNode } from "react";
 import type { TreeNode } from "../../lib/api";
-import { kindOf, titleOf } from "../../lib/paths";
+import { TREE_PATH_MIME, kindOf, titleOf } from "../../lib/paths";
 import {
   IconBoard,
   IconChevron,
@@ -79,9 +79,17 @@ export function TreeItem(p: Props) {
     }
   };
 
+  const draggable = !isDir && kindOf(node.path) === "image";
+  const onDragStart = (e: DragEvent) => {
+    e.dataTransfer.setData(TREE_PATH_MIME, node.path);
+    e.dataTransfer.effectAllowed = "copyLink";
+  };
+
   return (
     <div
       className="tree-row"
+      draggable={draggable ? true : undefined}
+      onDragStart={draggable ? onDragStart : undefined}
       role="treeitem"
       tabIndex={0}
       aria-selected={p.selected}

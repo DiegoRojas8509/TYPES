@@ -5,7 +5,7 @@ vi.mock("../../lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../lib/api")>();
   return {
     ...actual,
-    api: { ...actual.api, readText: vi.fn(), writeText: vi.fn(), saveAttachment: vi.fn() },
+    api: { ...actual.api, readText: vi.fn(), writeText: vi.fn(), saveAttachment: vi.fn(), importFiles: vi.fn() },
     assetUrl: (p: string) => `asset://localhost/${encodeURIComponent(p)}`,
   };
 });
@@ -15,6 +15,7 @@ import { parseCanvas } from "../../lib/canvas";
 import { initialState, useApp } from "../../store/app";
 import { useChats } from "../chat/conversations";
 import { initialChat } from "../chat/reducer";
+import { TREE_PATH_MIME } from "../../lib/paths";
 import { AUTOSAVE_MS } from "../../lib/useDocument";
 import { BoardView } from "./BoardView";
 
@@ -55,6 +56,7 @@ beforeEach(() => {
   vi.mocked(api.readText).mockReset().mockImplementation(async () => disk);
   vi.mocked(api.writeText).mockReset().mockResolvedValue(undefined);
   vi.mocked(api.saveAttachment).mockReset();
+  vi.mocked(api.importFiles).mockReset();
 });
 afterEach(() => vi.useRealTimers());
 
@@ -246,6 +248,67 @@ describe("BoardView (mounted under jsdom)", () => {
     await wait(AUTOSAVE_MS * 5);
     expect(api.writeText).not.toHaveBeenCalled();
     expect(screen.getByRole("alert")).toHaveTextContent("Esta pizarra no se puede abrir:");
+  });
+});
+
+async function dropFromTree(dragged: string) {
+  const flow = document.querySelector(".board-flow")!;
+  const dataTransfer = {
+    types: [TREE_PATH_MIME],
+    getData: (k: string) => (k === TREE_PATH_MIME ? dragged : ""),
+    files: [],
+    dropEffect: "none",
+  };
+  await act(async () => {
+    fireEvent.dragOver(flow, { dataTransfer });
+    fireEvent.drop(flow, { dataTransfer, clientX: 400, clientY: 300 });
+    await vi.advanceTimersByTimeAsync(0);
+  });
+}
+
+describe("dragging images from the sidebar", () => {
+  it("links an image of the same space without copying it", async () => {
+    await open(EMPTY);
+    await dropFromTree("Ropa/adjuntos/codigo.png");
+    await wait(AUTOSAVE_MS);
+    const parsed = parseCanvas(vi.mocked(api.writeText).mock.calls[0][1]);
+    expect(parsed.ok && parsed.doc.nodes).toMatchObject([{ type: "file", file: "adjuntos/codigo.png" }]);
+    expect(api.saveAttachment).not.toHaveBeenCalled();
+    expect(api.importFiles).not.toHaveBeenCalled();
+  });
+
+  it("copies an image of another space into this one and points at the copy", async () => {
+    vi.mocked(api.importFiles).mockResolvedValue(["Ropa/adjuntos/a.png"]);
+    await open(EMPTY);
+    await dropFromTree("Otro/adjuntos/a.png");
+    expect(api.importFiles).toHaveBeenCalledWith("Ropa/adjuntos", ["/Users/d/TYPES-espacios/Otro/adjuntos/a.png"]);
+    await wait(AUTOSAVE_MS);
+    const parsed = parseCanvas(vi.mocked(api.writeText).mock.calls[0][1]);
+    expect(parsed.ok && parsed.doc.nodes).toMatchObject([{ type: "file", file: "adjuntos/a.png" }]);
+  });
+
+  it("reports a failed copy and adds nothing", async () => {
+    vi.mocked(api.importFiles).mockRejectedValue({ message: "boom" });
+    await open(EMPTY);
+    await dropFromTree("Otro/adjuntos/a.png");
+    await wait(AUTOSAVE_MS * 5);
+    expect(api.writeText).not.toHaveBeenCalled();
+    expect(useApp.getState().notice?.message).toMatch(/No se pudo traer la imagen/);
+  });
+
+  it("ignores a dragged non-image", async () => {
+    await open(EMPTY);
+    await dropFromTree("Ropa/Notas.md");
+    await wait(AUTOSAVE_MS * 5);
+    expect(api.writeText).not.toHaveBeenCalled();
+    expect(api.importFiles).not.toHaveBeenCalled();
+  });
+
+  it("an invalid board has no drop target and never writes", async () => {
+    await open("{");
+    expect(document.querySelector(".board-flow")).toBeNull();
+    await wait(AUTOSAVE_MS * 5);
+    expect(api.writeText).not.toHaveBeenCalled();
   });
 });
 

@@ -6,11 +6,11 @@ import { useCallback, useEffect, useRef, type DragEvent, type RefObject } from "
 import { useReactFlow } from "@xyflow/react";
 import { api, errorMessage } from "../../lib/api";
 import type { CanvasNode } from "../../lib/canvas";
-import { spaceOf } from "../../lib/paths";
+import { TREE_PATH_MIME, absolutePath, kindOf, spaceOf } from "../../lib/paths";
 import { useApp } from "../../store/app";
-import { relativeSrc } from "../../lib/markdown";
 import { defaultNode } from "./addMenu";
 import { whole } from "./boardModel";
+import { plainRelative, planTreeDrop } from "./treeDrop";
 
 const IMAGE_EXT: Record<string, string> = {
   "image/png": "png",
@@ -84,10 +84,47 @@ export function useBoardImages({
     return () => window.removeEventListener("paste", onPaste);
   }, [editableRef, insertImages]);
 
+  const insertFromTree = useCallback(
+    async (dragged: string, at: { x: number; y: number }) => {
+      const plan = planTreeDrop(path, dragged);
+      if (plan.kind === "reject") {
+        if (plan.reason === "no-space") notify("Las imágenes se guardan dentro de un espacio. Mueve esta pizarra a uno para soltar imágenes.");
+        return;
+      }
+      let file: string;
+      if (plan.kind === "link") file = plan.file;
+      else {
+        try {
+          const root = useApp.getState().settings?.workspaceRoot ?? "";
+          const [copied] = await api.importFiles(plan.destDir, [absolutePath(root, dragged)]);
+          if (!mounted.current) return;
+          file = plainRelative(path, copied);
+        } catch (e) {
+          notify(`No se pudo traer la imagen: ${errorMessage(e)}`);
+          return;
+        }
+      }
+      addNodes([{ ...defaultNode("image", whole(at.x - 150), whole(at.y - 110)), file }]);
+    },
+    [path, notify, addNodes],
+  );
+
   function onDragOver(e: DragEvent) {
-    if (editableRef.current && e.dataTransfer.types.includes("Files")) e.preventDefault();
+    if (!editableRef.current) return;
+    const types = e.dataTransfer.types;
+    if (types.includes(TREE_PATH_MIME)) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+    } else if (types.includes("Files")) e.preventDefault();
   }
   function onDrop(e: DragEvent) {
+    const dragged = e.dataTransfer.getData(TREE_PATH_MIME);
+    if (dragged) {
+      if (!editableRef.current || kindOf(dragged) !== "image") return;
+      e.preventDefault();
+      void insertFromTree(dragged, rf.screenToFlowPosition({ x: e.clientX, y: e.clientY }));
+      return;
+    }
     const files = imageFiles(e.dataTransfer.files);
     if (!editableRef.current || files.length === 0) return;
     e.preventDefault();
@@ -99,9 +136,4 @@ export function useBoardImages({
 
 function imageFiles(list: FileList | undefined | null): File[] {
   return Array.from(list ?? []).filter((f) => f.type.startsWith("image/"));
-}
-
-/** Path of `saved` relative to the board's folder, written plainly (no %20) as the `.canvas` format expects. */
-function plainRelative(boardPath: string, saved: string): string {
-  return relativeSrc(boardPath, saved).replace(/%20/g, " ").replace(/%28/g, "(").replace(/%29/g, ")");
 }

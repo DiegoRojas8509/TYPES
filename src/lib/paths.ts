@@ -2,6 +2,9 @@
 
 export type FileKind = "markdown" | "canvas" | "html" | "image" | "other";
 
+/** dataTransfer type the sidebar sets when dragging an image row (value: workspace-relative path). */
+export const TREE_PATH_MIME = "application/x-types-path";
+
 const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "avif", "bmp"]);
 
 export function baseName(path: string): string {
