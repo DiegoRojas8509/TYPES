@@ -61,6 +61,14 @@ describe("option patches write the RAW options and never mutate", () => {
     expect(out.options[0]).toEqual({ ...opts[0], name: "Taller A" });
     expect(out.chosen).toBe("Taller A");
   });
+  it("emptying the chosen option's name leaves chosen untouched (no chosen key in the patch)", () => {
+    const out = setOptionName(input, 0, "");
+    expect(out.options[0]).toEqual({ ...opts[0], name: "" });
+    expect("chosen" in out).toBe(false);
+  });
+  it("renaming the chosen option to a new non-empty name still follows", () => {
+    expect(setOptionName(input, 0, "A2").chosen).toBe("A2");
+  });
   it("renaming a duplicate of the chosen name leaves chosen alone (another option still has it)", () => {
     const dup = { options: [{ name: "A" }, { name: "A" }], chosen: "A" };
     expect("chosen" in setOptionName(dup, 0, "B")).toBe(false);

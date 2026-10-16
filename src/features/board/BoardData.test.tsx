@@ -104,3 +104,19 @@ describe("BoardView with process blocks", () => {
     expect(parsed.ok && parsed.doc.nodes[0]).toMatchObject({ id: "d1", chosen: "A", options: [{ name: "A", nota: 1 }] });
   });
 });
+
+describe("BoardView decision choice", () => {
+  it("toggling the choice off removes the chosen key from the saved .canvas text", async () => {
+    disk = JSON.stringify({
+      nodes: [{ id: "d1", type: "decision", x: 0, y: 0, width: 420, height: 300, question: "¿Quién?", chosen: "A", options: [{ name: "A", pros: [], cons: [] }] }],
+      edges: [],
+    });
+    render(<BoardView path={PATH} />);
+    await wait(0);
+    fireEvent.click(screen.getByRole("button", { name: "«A» es la opción elegida. Quitar elección" }));
+    await wait(AUTOSAVE_MS);
+    const text = vi.mocked(api.writeText).mock.calls[0][1];
+    expect(text).not.toContain("chosen");
+    expect(parseCanvas(text).ok).toBe(true);
+  });
+});

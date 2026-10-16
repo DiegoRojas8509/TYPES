@@ -70,16 +70,19 @@ function mapOption(raw: Raw, index: number, fn: (opt: Record<string, unknown>) =
 }
 
 /**
- * Renames an option. If it is the chosen one (and no other option keeps that
- * name), `chosen` follows to the new name in the same patch. Emptying the name of
- * the chosen option therefore clears the choice (an option without a name cannot
- * be chosen); an unnamed option is never promoted to chosen by a rename.
+ * Renames an option. If it is the chosen one, `chosen` follows to the new name in
+ * the same patch, but only to a NON-EMPTY name and only when no other option keeps
+ * the old name (duplicates share a name, so the sibling stays chosen: the documented
+ * policy). Emptying the name writes no `chosen` key: `chosen` stays as found, dangling
+ * (the view hints "ya no es una opción"), so retyping the same name marks the option
+ * again. An unnamed option is never promoted to chosen by a rename.
  */
 export function setOptionName(raw: Raw, index: number, name: string): OptionsPatch {
   const options = rawOptions(raw);
   const old = index < options.length ? nameOf(options[index]) : "";
   const patch: OptionsPatch = { options: mapOption(raw, index, (o) => ({ ...o, name })) };
-  if (old !== "" && chosenOf(raw) === old && countNamed(options, old) === 1) patch.chosen = name;
+  // countNamed === 1: this option is the only holder of the old name, so no sibling keeps the choice.
+  if (name !== "" && old !== "" && chosenOf(raw) === old && countNamed(options, old) === 1) patch.chosen = name;
   return patch;
 }
 
