@@ -5,6 +5,7 @@ pub const ROOT_CLAUDE_MD: &str = r#"# Reglas de formato del espacio de trabajo
 Esta carpeta es la mesa de trabajo de Diego. Cada carpeta de primer nivel es un espacio (un negocio o proyecto) con su propio `CLAUDE.md` de contexto. Lee ese archivo antes de trabajar en un espacio.
 
 ## Cómo se guarda la información
+- La superficie principal de trabajo son las pizarras (`.canvas`): ahí van las notas, tablas, gráficas, líneas de tiempo y decisiones. Su formato está en la sección «Pizarras» de este archivo.
 - Las páginas son archivos Markdown (GFM) con extensión `.md`: texto descriptivo para explicar, y tablas para los datos duros (precios, medidas, cantidades).
 - Las salidas visuales (dashboards, reportes, previews de moldes) se entregan como archivos `.html` autocontenidos: CSS y JavaScript dentro del mismo archivo, sin depender de internet ni de otros archivos.
 - Las imágenes y archivos adjuntos viven en la carpeta `adjuntos/` de cada espacio. Referéncialos con rutas relativas, por ejemplo `![molde](adjuntos/molde.png)`.
@@ -19,7 +20,7 @@ Esta carpeta es la mesa de trabajo de Diego. Cada carpeta de primer nivel es un 
 
 pub const SPACE_CLAUDE_MD: &str = r#"# Contexto de este negocio
 
-Completa estas secciones. Claude las lee antes de analizar, costear o generar reportes. Sigue también las reglas de formato del `CLAUDE.md` de la carpeta superior: páginas en Markdown con tablas para los datos, salidas visuales en HTML autocontenido, adjuntos en `adjuntos/`, y fórmulas y supuestos visibles en cada cálculo.
+Completa estas secciones. Claude las lee antes de analizar, costear o generar reportes. Sigue también las reglas de formato del `CLAUDE.md` de la carpeta superior: la información vive sobre todo en pizarras (`.canvas`, ver la sección «Pizarras» de ese archivo) y, para texto largo, en páginas en Markdown con tablas para los datos, salidas visuales en HTML autocontenido, adjuntos en `adjuntos/`, y fórmulas y supuestos visibles en cada cálculo.
 
 ## Qué es este negocio
 
@@ -37,7 +38,9 @@ Completa estas secciones. Claude las lee antes de analizar, costear o generar re
 
 "#;
 
-pub const EMPTY_CANVAS: &str = "{\"nodes\":[],\"edges\":[]}\n";
+/// Byte for byte what the frontend's `serializeCanvas` writes for an empty board
+/// (2-space indent, trailing newline), so the first edit does not reformat the file.
+pub const EMPTY_CANVAS: &str = "{\n  \"nodes\": [],\n  \"edges\": []\n}\n";
 
 pub const BOARDS_SECTION: &str = r#"## Pizarras
 

@@ -342,6 +342,12 @@ describe("UnknownNode", () => {
     expect(container.querySelector("input, textarea, button, [contenteditable=true]")).toBeNull();
   });
 
+  it("a node with an empty type still gets a non-empty title and note", () => {
+    const { container } = render(board(make({ type: "" })));
+    expect(container.querySelector(".block-title")?.textContent).toBe("Bloque");
+    expect(container.querySelector(".block")).toHaveAccessibleName("Bloque");
+  });
+
   it("never calls update, whatever the user does to it", () => {
     const { container } = render(board(make({ type: "raro" }), true));
     const block = container.querySelector(".block") as HTMLElement;

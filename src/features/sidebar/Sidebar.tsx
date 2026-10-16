@@ -33,7 +33,7 @@ export function Sidebar() {
 
   function renderCreate(dir: string, depth: number) {
     if (!editing || editing.kind === "rename" || editing.kind === "create-space" || editing.dir !== dir) return null;
-    const isBoard = editing.kind === "create-page";
+    const isBoard = editing.kind === "create-board";
     return (
       <div className="name-input-row" style={{ paddingLeft: 4 + depth * 14 + 16 }}>
         <NameInput
@@ -75,9 +75,9 @@ export function Sidebar() {
               app().open(node.path);
             }
           }}
-          onNewPage={() => {
+          onNewBoard={() => {
             app().setExpanded(node.path, true);
-            setEditing({ kind: "create-page", dir: node.path });
+            setEditing({ kind: "create-board", dir: node.path });
           }}
           onNewFolder={() => {
             app().setExpanded(node.path, true);
@@ -102,7 +102,7 @@ export function Sidebar() {
   }
 
   return (
-    <nav className="sidebar" aria-label="Espacios y páginas">
+    <nav className="sidebar" aria-label="Espacios y pizarras">
       <div className="sidebar-head">
         <span className="sidebar-title">Types</span>
         <span className="sidebar-head-actions">
@@ -144,7 +144,7 @@ export function Sidebar() {
         {treeLoaded && spaces.length === 0 && !creatingSpace && (
           <div className="sidebar-empty">
             <h2>Crea tu primer espacio</h2>
-            <p>Un espacio es un negocio o proyecto. Ahí viven sus páginas y lo que Claude genere.</p>
+            <p>Un espacio es un negocio o proyecto. Ahí viven sus pizarras y lo que Claude genere.</p>
             <button className="btn btn-primary" onClick={() => setEditing({ kind: "create-space" })}>
               Crear espacio
             </button>

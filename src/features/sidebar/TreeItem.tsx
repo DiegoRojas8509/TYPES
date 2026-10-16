@@ -16,7 +16,7 @@ import {
 
 export type Editing =
   | { kind: "create-space" }
-  | { kind: "create-page"; dir: string }
+  | { kind: "create-board"; dir: string }
   | { kind: "create-folder"; dir: string }
   | { kind: "rename"; path: string };
 
@@ -42,7 +42,7 @@ interface Props {
   /** Replaces the label while renaming. */
   renaming?: ReactNode;
   onActivate(): void;
-  onNewPage(): void;
+  onNewBoard(): void;
   onNewFolder(): void;
   onRename(): void;
   onDelete(): void;
@@ -101,7 +101,7 @@ export function TreeItem(p: Props) {
         <span className="tree-actions">
           {isDir && (
             <>
-              <Action label={`Nueva pizarra en ${name}`} onClick={p.onNewPage}>
+              <Action label={`Nueva pizarra en ${name}`} onClick={p.onNewBoard}>
                 <IconPlus />
               </Action>
               <Action label={`Nueva carpeta en ${name}`} onClick={p.onNewFolder}>

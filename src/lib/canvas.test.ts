@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { emptyCanvas, mergeCanvasText, newId, parseCanvas, serializeCanvas, type CanvasDoc } from "./canvas";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { mergeCanvasText, newId, parseCanvas, serializeCanvas, type CanvasDoc } from "./canvas";
 
 const node = (id: string, extra: Record<string, unknown> = {}) => ({
   id,
@@ -113,15 +113,40 @@ describe("serializeCanvas", () => {
     expect(once).toContain('\n  "nodes": [');
   });
 
-  it("emptyCanvas serializes and parses back", () => {
-    expect(parsed(serializeCanvas(emptyCanvas()))).toEqual({ nodes: [], edges: [] });
+  // The Rust side (`EMPTY_CANVAS` in templates.rs) writes this exact text for a new board:
+  // if the two ever differ, the first edit of a new board reformats the file.
+  it("an empty board serializes to exactly what a new board file contains", () => {
+    expect(serializeCanvas({ nodes: [], edges: [] })).toBe('{\n  "nodes": [],\n  "edges": []\n}\n');
   });
 });
 
 describe("newId", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
   it("returns 8 characters and is not constant", () => {
     expect(newId()).toHaveLength(8);
     expect(newId()).not.toBe(newId());
+  });
+
+  it("uses randomUUID when the webview has it", () => {
+    vi.stubGlobal("crypto", { randomUUID: () => "a1b2c3d4-0000-4000-8000-000000000000" });
+    expect(newId()).toBe("a1b2c3d4");
+  });
+
+  it("falls back to getRandomValues when randomUUID is missing (insecure context)", () => {
+    const getRandomValues = vi.fn((a: Uint8Array) => a.fill(37));
+    vi.stubGlobal("crypto", { getRandomValues });
+    const id = newId();
+    expect(getRandomValues).toHaveBeenCalledTimes(1);
+    expect(id).toMatch(/^[a-z0-9]{8}$/);
+    expect(id).toBe("bbbbbbbb"); // 37 % 36 = 1 -> "b"
+  });
+
+  it("falls back to Math.random when there is no crypto at all", () => {
+    vi.stubGlobal("crypto", undefined);
+    const ids = new Set(Array.from({ length: 20 }, newId));
+    expect(ids.size).toBeGreaterThan(1);
+    for (const id of ids) expect(id).toMatch(/^[a-z0-9]{8}$/);
   });
 });
 

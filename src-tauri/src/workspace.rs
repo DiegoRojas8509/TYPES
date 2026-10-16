@@ -112,7 +112,10 @@ pub fn validate_name(name: &str) -> Result<&str> {
     let n = name.trim();
     let why = if n.is_empty() {
         "no puede estar vacío"
-    } else if n.contains('/') || n.contains('\\') || n.contains('\0') {
+    } else if n.chars().any(char::is_control) {
+        // The name ends up in the `Pizarra abierta: <board>` prompt line: a newline would inject a line.
+        "no puede contener saltos de línea ni caracteres de control"
+    } else if n.contains('/') || n.contains('\\') {
         "no puede contener / ni \\"
     } else if n.starts_with('.') {
         "no puede empezar con punto"
@@ -546,6 +549,7 @@ mod tests {
         assert_eq!(create_space_in(&root, "Ropa").unwrap(), "Ropa");
         let md = fs::read_to_string(root.join("Ropa/CLAUDE.md")).unwrap();
         assert!(md.contains("Proveedores y tarifas") && md.contains("Márgenes objetivo"));
+        assert!(md.contains(".canvas"), "a new space must point at boards");
         assert!(root.join("Ropa/adjuntos").is_dir());
         assert_eq!(create_space_in(&root, "Ropa").unwrap(), "Ropa 2");
     }
@@ -556,6 +560,21 @@ mod tests {
         for bad in ["", "   ", "a/b", "a\\b", ".oculto", "..", "a\0b"] {
             assert!(matches!(create_space_in(&root, bad), Err(AppError::InvalidName(_))), "{bad:?}");
         }
+    }
+
+    #[test]
+    fn names_with_control_characters_are_rejected_everywhere() {
+        let (_d, root) = ws();
+        create_space_in(&root, "Ropa").unwrap();
+        let page = create_page_in(&root, "Ropa", "Notas").unwrap();
+        for bad in ["a\nb", "a\tb", "a\rb", "a\u{7f}b"] {
+            assert!(matches!(create_space_in(&root, bad), Err(AppError::InvalidName(_))), "space {bad:?}");
+            assert!(matches!(create_page_in(&root, "Ropa", bad), Err(AppError::InvalidName(_))), "page {bad:?}");
+            assert!(matches!(create_board_in(&root, "Ropa", bad), Err(AppError::InvalidName(_))), "board {bad:?}");
+            assert!(matches!(create_folder_in(&root, "Ropa", bad), Err(AppError::InvalidName(_))), "folder {bad:?}");
+            assert!(matches!(rename_entry_in(&root, &page, bad), Err(AppError::InvalidName(_))), "rename {bad:?}");
+        }
+        assert!(root.join(&page).is_file());
     }
 
     #[test]
@@ -578,7 +597,8 @@ mod tests {
         assert_eq!(create_board_in(&root, "Ropa", "Plan.canvas").unwrap(), "Ropa/Plan 3.canvas");
         assert_eq!(create_board_in(&root, "Ropa", "Plan.CANVAS").unwrap(), "Ropa/Plan 4.canvas");
         let raw = fs::read_to_string(root.join("Ropa/Plan.canvas")).unwrap();
-        assert_eq!(raw, "{\"nodes\":[],\"edges\":[]}\n");
+        // exactly what the frontend's `serializeCanvas` writes, so the first edit does not reformat the file
+        assert_eq!(raw, "{\n  \"nodes\": [],\n  \"edges\": []\n}\n");
         let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
         assert_eq!(v["nodes"], serde_json::json!([]));
         assert_eq!(v["edges"], serde_json::json!([]));

@@ -26,12 +26,20 @@ export type CanvasDoc = { nodes: CanvasNode[]; edges: CanvasEdge[] };
 const NODE_KEY_ORDER = ["id", "type", "x", "y", "width", "height"];
 const EDGE_KEY_ORDER = ["id", "fromNode", "toNode"];
 
-export function emptyCanvas(): CanvasDoc {
-  return { nodes: [], edges: [] };
-}
+const ID_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789";
 
+/**
+ * 8 characters of [a-z0-9]. `crypto.randomUUID` needs a secure context and may be
+ * missing in the packaged app's webview, so fall back to `getRandomValues`, then to
+ * `Math.random` (ids only need to be unique within one board, not unguessable).
+ */
 export function newId(): string {
-  return crypto.randomUUID().slice(0, 8);
+  const c = globalThis.crypto;
+  if (typeof c?.randomUUID === "function") return c.randomUUID().slice(0, 8);
+  const bytes = new Uint8Array(8);
+  if (typeof c?.getRandomValues === "function") c.getRandomValues(bytes);
+  else for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+  return Array.from(bytes, (b) => ID_CHARS[b % ID_CHARS.length]).join("");
 }
 
 /** Own-property check (tsconfig lib predates Object.hasOwn). */
@@ -43,7 +51,10 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
-/** First occurrence keeps its id; later ones become `id-2`, `id-3`, ... skipping ids already used. */
+/**
+ * First occurrence keeps its id; later ones become `id-2`, `id-3`, ... skipping ids already used.
+ * Edges that pointed at the duplicated id keep pointing at the FIRST node with it.
+ */
 function dedupeIds<T extends { id: string }>(items: T[]): T[] {
   const used = new Set(items.map((i) => i.id));
   const seen = new Set<string>();

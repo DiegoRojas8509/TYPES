@@ -62,6 +62,14 @@ describe("boardModel", () => {
     expect(patchFlowNode(f, { id: "zzz" }, all).id).toBe("a");
   });
 
+  it("a patch keeps React Flow's measured size and selection", () => {
+    const f: FlowNode = { ...toFlowNode(node, all), selected: true, measured: { width: 120, height: 45 } };
+    const p = patchFlowNode(f, { text: "nuevo" }, all);
+    expect(p.measured).toEqual({ width: 120, height: 45 });
+    expect(p.selected).toBe(true);
+    expect(patchFlowNode(toFlowNode(node, all), { text: "x" }, all).measured).toBeUndefined();
+  });
+
   it("rounds positions and attribute-setting dimensions only", () => {
     const changes = [
       { id: "a", type: "position", position: { x: 1.6, y: -2.4 }, dragging: true },

@@ -71,6 +71,9 @@ describe("Sidebar", () => {
     useApp.setState({ tree: [], treeLoaded: true });
     render(<Sidebar />);
     expect(screen.getByText("Crea tu primer espacio")).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "Espacios y pizarras" })).toBeInTheDocument();
+    expect(screen.getByText("Un espacio es un negocio o proyecto. Ahí viven sus pizarras y lo que Claude genere.")).toBeInTheDocument();
+    expect(screen.queryByText(/páginas/)).not.toBeInTheDocument();
   });
 
   it("renders spaces and nested pages from the tree", () => {

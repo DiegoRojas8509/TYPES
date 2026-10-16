@@ -58,10 +58,10 @@ export function visibleEdges(nodes: FlowNode[], edges: FlowEdge[]): FlowEdge[] {
   return edges.filter((e) => ids.has(e.source) && ids.has(e.target));
 }
 
-/** Merges a block's patch into a node, keeping selection and its live position. */
+/** Merges a block's patch into a node, keeping selection, React Flow's measured size and its live position. */
 export function patchFlowNode(n: FlowNode, patch: Partial<CanvasNode>, isKnown: (type: string) => boolean): FlowNode {
   const merged: CanvasNode = { ...fromFlowNode(n), ...patch, id: n.id };
-  return { ...toFlowNode(merged, isKnown), selected: n.selected };
+  return { ...toFlowNode(merged, isKnown), selected: n.selected, measured: n.measured };
 }
 
 /** Rounds to an integer; NaN and Infinity become 0 so a position can never corrupt the file. */

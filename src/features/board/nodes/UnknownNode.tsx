@@ -9,7 +9,7 @@ import { GlyphUnknown } from "./glyphs";
  */
 export function UnknownNode({ id, data, selected }: NodeProps<FlowNode>) {
   return (
-    <BlockShell id={id} selected={selected} title={data.type} glyph={<GlyphUnknown />} color={data.color} className="block-unknown">
+    <BlockShell id={id} selected={selected} title={data.type || "Bloque"} glyph={<GlyphUnknown />} color={data.color} className="block-unknown">
       <p className="block-note">Bloque de tipo «{data.type}» no soportado: se conserva sin cambios</p>
     </BlockShell>
   );
