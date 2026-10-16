@@ -54,3 +54,18 @@ export const GlyphChart = () => (
     <path d="M6 11V8M9 11V5.5M12 11V7.5" />
   </Svg>
 );
+export const GlyphTimeline = () => (
+  <Svg>
+    <path d="M5 2.5v11" />
+    <circle cx="5" cy="4.5" r="1.4" />
+    <circle cx="5" cy="11.5" r="1.4" />
+    <path d="M8.5 4.5H13M8.5 11.5H12" />
+  </Svg>
+);
+export const GlyphDecision = () => (
+  <Svg>
+    <path d="M8 2.5v4M8 6.5 3.5 10M8 6.5 12.5 10" />
+    <circle cx="3.5" cy="12" r="1.3" />
+    <circle cx="12.5" cy="12" r="1.3" />
+  </Svg>
+);

@@ -66,3 +66,41 @@ describe("BoardView with data blocks", () => {
     expect(parsed.ok && parsed.doc.nodes[1]).toMatchObject({ id: "c1", series: [{ name: "S", values: [1] }] });
   });
 });
+
+describe("BoardView with process blocks", () => {
+  it("renders a timeline and a decision (even malformed) and does not write on open", async () => {
+    disk = JSON.stringify({
+      nodes: [
+        { id: "l1", type: "timeline", x: 0, y: 0, width: 420, height: 240, title: "Avances", items: [{ date: "2026-10-01", title: "Muestra", status: "hecho" }, "suelto", null] },
+        { id: "d1", type: "decision", x: 460, y: 0, width: 420, height: 300, question: "¿Quién?", chosen: "Nadie", options: [{ name: "A", pros: ["x"] }, null, "B"] },
+      ],
+      edges: [],
+    });
+    const spies = [vi.spyOn(console, "error"), vi.spyOn(console, "warn")];
+    render(<BoardView path={PATH} />);
+    await wait(0);
+    expect(screen.getByLabelText("Título de la línea de tiempo")).toHaveValue("Avances");
+    expect(screen.getByLabelText("Título del avance 2")).toHaveValue("suelto");
+    expect(screen.getByLabelText("Pregunta de la decisión")).toHaveValue("¿Quién?");
+    expect(screen.getByText("«Nadie» ya no es una opción")).toBeInTheDocument();
+    await wait(AUTOSAVE_MS * 3);
+    expect(api.writeText).not.toHaveBeenCalled();
+    for (const s of spies) {
+      expect(s).not.toHaveBeenCalled();
+      s.mockRestore();
+    }
+  });
+
+  it("choosing an option writes chosen to the board and leaves the other fields as they were", async () => {
+    disk = JSON.stringify({
+      nodes: [{ id: "d1", type: "decision", x: 0, y: 0, width: 420, height: 300, question: "¿Quién?", options: [{ name: "A", pros: [], cons: [], nota: 1 }] }],
+      edges: [],
+    });
+    render(<BoardView path={PATH} />);
+    await wait(0);
+    fireEvent.click(screen.getByRole("button", { name: "Elegir esta opción: «A»" }));
+    await wait(AUTOSAVE_MS);
+    const parsed = parseCanvas(vi.mocked(api.writeText).mock.calls[0][1]);
+    expect(parsed.ok && parsed.doc.nodes[0]).toMatchObject({ id: "d1", chosen: "A", options: [{ name: "A", nota: 1 }] });
+  });
+});
