@@ -7,23 +7,26 @@ describe("tableView", () => {
   });
   it("coerces non-string cells for display", () => {
     expect(tableView({ columns: ["A", 7 as never], rows: [[1, null, undefined] as never] })).toEqual({
-      columns: ["A", "7"],
-      rows: [["1", ""]],
+      columns: ["A", "7", ""],
+      rows: [["1", "", ""]],
     });
   });
-  it("pads short rows and truncates long ones to the column count", () => {
-    expect(tableView({ columns: ["A", "B", "C"], rows: [["1"], ["1", "2", "3", "4"]] }).rows).toEqual([
-      ["1", "", ""],
-      ["1", "2", "3"],
-    ]);
+  it("pads short rows, and never truncates: a longer row widens the table with empty headers", () => {
+    expect(tableView({ columns: ["A", "B", "C"], rows: [["1"], ["1", "2", "3", "4"]] })).toEqual({
+      columns: ["A", "B", "C", ""],
+      rows: [
+        ["1", "", "", ""],
+        ["1", "2", "3", "4"],
+      ],
+    });
   });
   it("copes with missing rows and columns", () => {
     expect(tableView({})).toEqual({ columns: [""], rows: [] });
     expect(tableView({ columns: ["A"] })).toEqual({ columns: ["A"], rows: [] });
     expect(tableView({ rows: [["x", "y"]] })).toEqual({ columns: ["", ""], rows: [["x", "y"]] });
   });
-  it("treats a row that is not an array as an empty row", () => {
-    expect(tableView({ columns: ["A"], rows: ["oops", null] as never }).rows).toEqual([[""], [""]]);
+  it("keeps a primitive row as its first cell and treats null or an object as an empty row", () => {
+    expect(tableView({ columns: ["A"], rows: ["oops", null, {}] as never }).rows).toEqual([["oops"], [""], [""]]);
   });
   it("ignores values that are not arrays at all", () => {
     expect(tableView({ columns: "A" as never, rows: { a: 1 } as never })).toEqual({ columns: [""], rows: [] });
@@ -53,8 +56,28 @@ describe("edit helpers return new normalized data and never mutate", () => {
     expect(deleteColumn(t, 0)).toEqual({ columns: ["B"], rows: [["2"]] });
     expect(deleteColumn({ columns: ["A"], rows: [["1"]] }, 0)).toEqual({ columns: ["A"], rows: [["1"]] });
   });
-  it("normalizes malformed input when writing back", () => {
-    expect(setCell({ columns: ["A", "B"], rows: [[5, "x", "extra"] as never] }, 0, 0, "7").rows).toEqual([["7", "x"]]);
+  it("normalizes malformed input when writing back, without losing a cell beyond the columns", () => {
+    expect(setCell({ columns: ["A", "B"], rows: [[5, "x", "extra"] as never] }, 0, 0, "7")).toEqual({
+      columns: ["A", "B", ""],
+      rows: [["7", "x", "extra"]],
+    });
+  });
+  it("a ragged table edited elsewhere keeps the extra cell in every row, and short rows are padded", () => {
+    const ragged = { columns: ["A", "B"], rows: [["1", "2", "3"], ["4"], ["5", "6"]] };
+    const frozen = JSON.stringify(ragged);
+    for (const out of [setCell(ragged, 1, 0, "x"), setHeader(ragged, 0, "Z"), addRow(ragged), deleteRow(ragged, 2)]) {
+      expect(out.columns).toHaveLength(3);
+      expect(out.rows.every((r) => r.length === 3)).toBe(true);
+      expect(out.rows[0]).toEqual(["1", "2", "3"]);
+    }
+    expect(setCell(ragged, 1, 0, "x")).toEqual({ columns: ["A", "B", ""], rows: [["1", "2", "3"], ["x", "", ""], ["5", "6", ""]] });
+    expect(addColumn(ragged)).toEqual({ columns: ["A", "B", "", ""], rows: [["1", "2", "3", ""], ["4", "", "", ""], ["5", "6", "", ""]] });
+    expect(JSON.stringify(ragged)).toBe(frozen);
+  });
+  it("an explicit deleteColumn still removes that column from every row of a ragged table", () => {
+    const ragged = { columns: ["A", "B"], rows: [["1", "2", "3"], ["4"]] };
+    expect(deleteColumn(ragged, 2)).toEqual({ columns: ["A", "B"], rows: [["1", "2"], ["4", ""]] });
+    expect(deleteColumn(ragged, 0)).toEqual({ columns: ["B", ""], rows: [["2", "3"], ["", ""]] });
   });
 });
 

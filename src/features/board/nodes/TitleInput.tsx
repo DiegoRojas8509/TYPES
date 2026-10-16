@@ -1,3 +1,4 @@
+import "./datagrid.css";
 import type { ChangeEvent } from "react";
 
 /**

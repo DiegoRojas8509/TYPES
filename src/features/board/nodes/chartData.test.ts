@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   addLabel,
   addSeries,
-  editableData,
   parseNumberInput,
   prepareChartData,
   removeLabel,
@@ -22,8 +21,8 @@ describe("prepareChartData", () => {
     expect(d.labels).toEqual(["A", "B"]);
     expect(d.series).toEqual([{ name: "S", values: [1, 2] }]);
     expect(d.rows).toEqual([
-      { label: "A", s0: 1 },
-      { label: "B", s0: 2 },
+      { label: "A", idx: 0, s0: 1 },
+      { label: "B", idx: 1, s0: 2 },
     ]);
     expect(d.empty).toBe(false);
   });
@@ -31,7 +30,7 @@ describe("prepareChartData", () => {
   it("treats values shorter than labels as gaps (null), never 0", () => {
     const d = prepareChartData(node({ kind: "bar", labels: ["A", "B", "C"], series: [{ name: "S", values: [1] }] }));
     expect(d.series[0].values).toEqual([1, null, null]);
-    expect(d.rows[2]).toEqual({ label: "C", s0: null });
+    expect(d.rows[2]).toEqual({ label: "C", idx: 2, s0: null });
   });
 
   it("truncates values longer than labels for display", () => {
@@ -118,44 +117,74 @@ describe("parseNumberInput", () => {
   });
 });
 
-describe("editing helpers (new arrays, normalized, gaps stored as 0)", () => {
-  const n = node({ kind: "bar", labels: ["A", "B"], series: [{ name: "S1", values: [1, 2] }, { name: "S2", values: [3] }] });
-  const frozen = JSON.stringify(n);
-
-  it("editableData normalizes to labels.length numbers, null becomes 0", () => {
-    expect(editableData(n)).toEqual({
-      labels: ["A", "B"],
+describe("editing helpers: they patch only what was touched, from the RAW data", () => {
+  const raw = () =>
+    node({
+      kind: "bar",
+      labels: ["A", "B", "C"],
       series: [
-        { name: "S1", values: [1, 2] },
-        { name: "S2", values: [3, 0] },
+        { name: "S1", color: "#f00", values: [1, "n/a", 3, 99] },
+        { name: "S2", values: [5] },
+        "raro",
       ],
     });
+  const frozen = JSON.stringify(raw());
+
+  it("setValue changes only that cell; gaps, text and values beyond the labels stay as found", () => {
+    const out = setValue(raw(), 0, 0, 7);
+    expect(out.labels).toEqual(["A", "B", "C"]);
+    expect(out.series[0]).toEqual({ name: "S1", color: "#f00", values: [7, "n/a", 3, 99] });
+    expect(out.series[1]).toEqual({ name: "S2", values: [5] }); // the other series is untouched
+    expect(out.series[2]).toBe("raro"); // a non-object entry stays intact
   });
-  it("setValue changes one cell", () => {
-    expect(setValue(editableData(n), 1, 0, 9).series[0].values).toEqual([1, 9]);
+  it("setValue pads with 0 only up to the edited index, so a gap before it becomes 0 but later ones stay gaps", () => {
+    expect(setValue(raw(), 2, 1, 9).series[1]).toEqual({ name: "S2", values: [5, 0, 9] });
+    expect(setValue(raw(), 0, 1, 6).series[1]).toEqual({ name: "S2", values: [6] });
   });
-  it("renameLabel / renameSeries", () => {
-    expect(renameLabel(editableData(n), 0, "Z").labels).toEqual(["Z", "B"]);
-    expect(renameSeries(editableData(n), 1, "Y").series[1].name).toBe("Y");
+  it("setValue on a non-object series creates it (the user touched it); other fields stay", () => {
+    expect(setValue(raw(), 1, 2, 4).series[2]).toEqual({ name: "Serie 3", values: [0, 4] });
+    const odd = node({ labels: ["A"], series: [{ name: "S", values: "no", color: "1" }] });
+    expect(setValue(odd, 0, 0, 2).series[0]).toEqual({ name: "S", values: [2], color: "1" });
   });
-  it("addLabel appends a label and a 0 to every series", () => {
-    const d = addLabel(editableData(n));
-    expect(d.labels).toEqual(["A", "B", "Etiqueta 3"]);
-    expect(d.series.map((s) => s.values)).toEqual([[1, 2, 0], [3, 0, 0]]);
+  it("renameLabel changes only that label", () => {
+    const out = renameLabel(raw(), 1, "Z");
+    expect(out.labels).toEqual(["A", "Z", "C"]);
+    expect(out.series).toEqual(raw().series);
   });
-  it("removeLabel drops the label and its value in every series", () => {
-    const d = removeLabel(editableData(n), 0);
-    expect(d.labels).toEqual(["B"]);
-    expect(d.series.map((s) => s.values)).toEqual([[2], [0]]);
+  it("renameSeries spreads the original object, so extra fields survive", () => {
+    expect(renameSeries(raw(), 0, "Nuevo").series[0]).toEqual({ name: "Nuevo", color: "#f00", values: [1, "n/a", 3, 99] });
+    expect(renameSeries(raw(), 2, "Ahora").series[2]).toEqual({ name: "Ahora", values: [] });
   });
-  it("addSeries appends a zero-filled series; removeSeries drops one", () => {
-    const d = addSeries(editableData(n));
-    expect(d.series[2]).toEqual({ name: "Serie 3", values: [0, 0] });
-    expect(removeSeries(d, 0).series.map((s) => s.name)).toEqual(["S2", "Serie 3"]);
+  it("addLabel appends the label and a 0 only to series that were already full-length", () => {
+    const full = node({ labels: ["A", "B"], series: [{ name: "Full", values: [1, 2] }, { name: "Short", values: [1] }, { name: "Long", values: [1, 2, 3] }, "raro"] });
+    const out = addLabel(full);
+    expect(out.labels).toEqual(["A", "B", "Etiqueta 3"]);
+    expect(out.series).toEqual([{ name: "Full", values: [1, 2, 0] }, { name: "Short", values: [1] }, { name: "Long", values: [1, 2, 3] }, "raro"]);
   });
-  it("never mutates the node", () => {
-    setValue(editableData(n), 0, 0, 5);
-    addLabel(editableData(n));
-    expect(JSON.stringify(n)).toBe(frozen);
+  it("removeLabel removes that index from labels and from each series' values, if present", () => {
+    const out = removeLabel(raw(), 1);
+    expect(out.labels).toEqual(["A", "C"]);
+    expect(out.series[0]).toEqual({ name: "S1", color: "#f00", values: [1, 3, 99] });
+    expect(out.series[1]).toEqual({ name: "S2", values: [5] });
+    expect(out.series[2]).toBe("raro");
+    expect(removeLabel(raw(), 2).series[1]).toEqual({ name: "S2", values: [5] });
+  });
+  it("addSeries appends a zero-filled series without touching the others; removeSeries removes one entry", () => {
+    const added = addSeries(raw());
+    expect(added.series).toHaveLength(4);
+    expect(added.series[3]).toEqual({ name: "Serie 4", values: [0, 0, 0] });
+    expect(added.series.slice(0, 3)).toEqual(raw().series);
+    expect(removeSeries(raw(), 2).series).toHaveLength(2);
+    expect(removeSeries(raw(), 0).series[0]).toEqual({ name: "S2", values: [5] });
+  });
+  it("copes with missing arrays and never mutates its input", () => {
+    expect(addLabel(node({}))).toEqual({ labels: ["Etiqueta 1"], series: [] });
+    expect(addSeries(node({}))).toEqual({ labels: [], series: [{ name: "Serie 1", values: [] }] });
+    const input = raw();
+    setValue(input, 0, 0, 5);
+    addLabel(input);
+    removeLabel(input, 0);
+    renameSeries(input, 0, "x");
+    expect(JSON.stringify(input)).toBe(frozen);
   });
 });

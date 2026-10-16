@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useLayoutEffect, useRef, useState, type RefObject } from "react";
 
 /**
  * Whether the element's content overflows it. Blocks put `nowheel` on a scroll
@@ -8,15 +8,20 @@ import { useLayoutEffect, useRef, useState, type RefObject } from "react";
 export function useScrollable<T extends HTMLElement>(): [RefObject<T | null>, boolean] {
   const ref = useRef<T | null>(null);
   const [scrollable, setScrollable] = useState(false);
+  const check = useCallback(() => {
+    const el = ref.current;
+    if (el) setScrollable(el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1);
+  }, []);
+  // Content can grow without the element resizing (a row is added to a scrolling
+  // table), so measure after every render; setState bails out when nothing changed.
+  useLayoutEffect(check);
+  // Block resizes do not re-render this component: one observer per element, for the element's lifetime.
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const check = () => setScrollable(el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1);
-    check();
-    // Content can grow without a re-render of this component (the user resizes the block).
     const observer = new ResizeObserver(check);
     observer.observe(el);
     return () => observer.disconnect();
-  });
+  }, [check]);
   return [ref, scrollable];
 }

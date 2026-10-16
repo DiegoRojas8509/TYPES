@@ -1,3 +1,4 @@
+import "./chart.css";
 import type { NodeProps } from "@xyflow/react";
 import { useMemo, useState } from "react";
 import { useBoardActions } from "../boardActions";
@@ -6,7 +7,7 @@ import { BlockShell } from "./BlockShell";
 import { chartColor } from "./chartColors";
 import { ChartCanvas } from "./ChartCanvas";
 import { ChartDataGrid } from "./ChartDataGrid";
-import { editableData, KINDS, prepareChartData, type ChartKind, type EditableData } from "./chartData";
+import { KINDS, prepareChartData, type ChartKind, type ChartPatch, type ChartRaw } from "./chartData";
 import { GlyphChart } from "./glyphs";
 import { TitleInput } from "./TitleInput";
 
@@ -20,7 +21,7 @@ const KIND_NAME: Record<ChartKind, { button: string; aria: string }> = {
  * Chart block (bar, line or pie). The data is hardened once by
  * `prepareChartData`; the "Datos" toggle swaps the chart for an editable grid
  * of the same data. Opening, selecting or toggling never writes: only an edit
- * does, and then `labels` and `series` are written back normalized.
+ * does, and it changes only the touched value, label or series.
  */
 export function ChartNode({ id, data, selected }: NodeProps<FlowNode>) {
   const { update } = useBoardActions();
@@ -29,8 +30,9 @@ export function ChartNode({ id, data, selected }: NodeProps<FlowNode>) {
   const title = prepared.title;
   const { kind } = prepared;
 
-  const edit = (fn: (d: EditableData) => EditableData) => {
-    const next = fn(editableData(data));
+  // Writes go through the node's raw data (chartData.ts editing helpers): they patch only what was touched.
+  const edit = (fn: (raw: ChartRaw) => ChartPatch) => {
+    const next = fn(data);
     update(id, { labels: next.labels, series: next.series });
   };
 

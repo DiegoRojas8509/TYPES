@@ -118,9 +118,9 @@ describe("ChartNode", () => {
       labels: ["Ene", "Feb"],
       series: [{ name: "Tela", values: [3, 5] }, { name: "Serie 2", values: [0, 0] }],
     });
-    fireEvent.click(getByRole("button", { name: "Quitar etiqueta 1" }));
+    fireEvent.click(getByRole("button", { name: "Eliminar etiqueta «Ene»" }));
     expect(update).toHaveBeenLastCalledWith("n1", { labels: ["Feb"], series: [{ name: "Tela", values: [5] }] });
-    fireEvent.click(getByRole("button", { name: "Quitar serie 1" }));
+    fireEvent.click(getByRole("button", { name: "Eliminar serie «Tela»" }));
     expect(update).toHaveBeenLastCalledWith("n1", { labels: ["Ene", "Feb"], series: [] });
   });
 
@@ -133,18 +133,61 @@ describe("ChartNode", () => {
     expect(update).toHaveBeenCalledWith("n1", { labels: ["Etiqueta 1"], series: [] });
   });
 
-  it("renders malformed data without throwing and normalizes only on edit", () => {
-    const node = chart({ labels: ["A", "B", "C"], series: [{ name: "S", values: [1, "x", NaN, 9, 9] }, "raro"] });
-    const { container } = render(board(node));
-    expect(update).not.toHaveBeenCalled();
-    open(container);
-    expect(num(container, 2, 1).value).toBe("");
-    expect(num(container, 3, 1).value).toBe("");
-    expect(container.querySelector('input[aria-label="Valor fila 4, serie 1"]')).toBeNull();
-    fireEvent.change(num(container, 1, 1), { target: { value: "2" } });
-    expect(update).toHaveBeenCalledWith("n1", {
-      labels: ["A", "B", "C"],
-      series: [{ name: "S", values: [2, 0, 0] }, { name: "Serie 2", values: [0, 0, 0] }],
+  describe("malformed data: an edit patches only the touched thing", () => {
+    const messy = (extra: Record<string, unknown> = {}) =>
+      chart({
+        labels: ["A", "B", "C"],
+        series: [{ name: "S", color: "#f00", values: [1, "n/a", NaN, 9, 9] }, { name: "Corta", values: [4] }, "raro"],
+        ...extra,
+      });
+
+    it("renders without throwing and opening the grid writes nothing", () => {
+      const { container } = render(board(messy()));
+      open(container);
+      expect(update).not.toHaveBeenCalled();
+      expect(num(container, 2, 1).value).toBe("");
+      expect(num(container, 3, 1).value).toBe("");
+      expect(num(container, 2, 2).value).toBe("");
+      expect(container.querySelector('input[aria-label="Valor fila 4, serie 1"]')).toBeNull();
+    });
+
+    it("editing cell A leaves the gaps elsewhere as gaps, text as text, extra fields, values beyond the labels and odd entries intact", () => {
+      const { container } = render(board(messy()));
+      open(container);
+      fireEvent.change(num(container, 1, 1), { target: { value: "2" } });
+      expect(update).toHaveBeenCalledTimes(1);
+      expect(update).toHaveBeenCalledWith("n1", {
+        labels: ["A", "B", "C"],
+        series: [{ name: "S", color: "#f00", values: [2, "n/a", NaN, 9, 9] }, { name: "Corta", values: [4] }, "raro"],
+      });
+    });
+
+    it("editing a cell after a gap pads only up to that cell", () => {
+      const { container } = render(board(messy()));
+      open(container);
+      fireEvent.change(num(container, 3, 2), { target: { value: "8" } });
+      expect(update).toHaveBeenCalledWith("n1", {
+        labels: ["A", "B", "C"],
+        series: [{ name: "S", color: "#f00", values: [1, "n/a", NaN, 9, 9] }, { name: "Corta", values: [4, 0, 8] }, "raro"],
+      });
+    });
+
+    it("renaming a series keeps its extra fields", () => {
+      const { container } = render(board(messy()));
+      open(container);
+      fireEvent.change(container.querySelector('input[aria-label="Nombre de la serie 1"]') as HTMLInputElement, { target: { value: "Ventas" } });
+      expect(update.mock.calls[0][1].series[0]).toEqual({ name: "Ventas", color: "#f00", values: [1, "n/a", NaN, 9, 9] });
+      expect(update.mock.calls[0][1].series[2]).toBe("raro");
+    });
+
+    it("adding a label does not turn a short series' gaps into zeros", () => {
+      const { container, getByRole } = render(board(messy()));
+      open(container);
+      fireEvent.click(getByRole("button", { name: "+ etiqueta" }));
+      const out = update.mock.calls[0][1];
+      expect(out.labels).toEqual(["A", "B", "C", "Etiqueta 4"]);
+      expect(out.series[1]).toEqual({ name: "Corta", values: [4] });
+      expect(out.series[0].values).toEqual([1, "n/a", NaN, 9, 9]); // longer than the labels: untouched
     });
   });
 
@@ -172,6 +215,15 @@ describe("ChartNode", () => {
       fireEvent.blur(input);
     }
     expect(update).not.toHaveBeenCalled();
+  });
+
+  it("grid delete buttons are keyboard reachable and say what they remove", () => {
+    const { container, getByRole } = render(board(chart()));
+    open(container);
+    for (const name of ["Eliminar etiqueta «Ene»", "Eliminar etiqueta «Feb»", "Eliminar serie «Tela»"]) {
+      expect(getByRole("button", { name })).not.toHaveAttribute("tabindex");
+    }
+    expect(container.querySelector("button[tabindex='-1']")).toBeNull();
   });
 
   it("keeps the grid out of React Flow's drag and pan", () => {

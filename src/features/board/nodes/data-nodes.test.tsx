@@ -88,15 +88,23 @@ describe("TableNode", () => {
 
   it("deletes a row (zero rows is allowed) and a column", () => {
     const { getByRole } = render(board(table({ rows: [["Tela", "12"]] })));
-    fireEvent.click(getByRole("button", { name: "Borrar fila 1" }));
+    fireEvent.click(getByRole("button", { name: "Eliminar fila 1" }));
     expect(update).toHaveBeenLastCalledWith("n1", { columns: ["Concepto", "Valor"], rows: [] });
-    fireEvent.click(getByRole("button", { name: "Borrar columna 1" }));
+    fireEvent.click(getByRole("button", { name: "Eliminar columna «Concepto»" }));
     expect(update).toHaveBeenLastCalledWith("n1", { columns: ["Valor"], rows: [["12"]] });
+  });
+
+  it("delete buttons are reachable by keyboard and say what they delete", () => {
+    const { container, getByRole } = render(board(table({ columns: ["Concepto", "Precio", ""] , rows: [["Tela", "12", ""], ["Hilo", "3", ""]] })));
+    for (const name of ["Eliminar fila 1", "Eliminar fila 2", "Eliminar columna «Precio»", "Eliminar columna 3"]) {
+      expect(getByRole("button", { name })).not.toHaveAttribute("tabindex");
+    }
+    expect(container.querySelector("button[tabindex='-1']")).toBeNull();
   });
 
   it("never deletes the last column", () => {
     const { getByRole } = render(board(table({ columns: ["Solo"], rows: [["x"]] })));
-    const del = getByRole("button", { name: "Borrar columna 1" });
+    const del = getByRole("button", { name: "Eliminar columna «Solo»" });
     expect(del).toBeDisabled();
     fireEvent.click(del);
     expect(update).not.toHaveBeenCalled();
@@ -122,8 +130,6 @@ describe("TableNode", () => {
     expect(document.activeElement).toBe(cell(container, 2, 1));
     fireEvent.keyDown(cell(container, 2, 1), { key: "Enter" });
     expect(document.activeElement).toBe(cell(container, 2, 1));
-    // the per-row and per-column delete buttons are mouse-only: they would break Tab-moves-right
-    expect(container.querySelector("button[aria-label='Borrar fila 1']")).toHaveAttribute("tabindex", "-1");
   });
 
   it("keeps editable inputs out of React Flow's drag, wheel and pan", () => {
@@ -139,7 +145,7 @@ describe("TableNode", () => {
     expect(update).not.toHaveBeenCalled();
   });
 
-  it("renders malformed data without throwing, and an edit writes normalized rows", () => {
+  it("renders malformed data without throwing; an edit writes normalized rows and loses no cell", () => {
     const node = make({
       type: "table",
       columns: ["A", "B"],
@@ -148,11 +154,17 @@ describe("TableNode", () => {
     const { container } = render(board(node));
     expect(cell(container, 1, 1).value).toBe("1");
     expect(cell(container, 1, 2).value).toBe("2");
-    expect(container.querySelector('input[aria-label="Fila 1, columna 3"]')).toBeNull();
+    // a cell beyond the headers is shown under an extra empty header, never dropped
+    expect(cell(container, 1, 3).value).toBe("3");
+    expect(head(container, 3).value).toBe("");
     expect(cell(container, 2, 2).value).toBe("");
+    expect(cell(container, 3, 1).value).toBe("raro");
     expect(update).not.toHaveBeenCalled();
     fireEvent.change(cell(container, 2, 1), { target: { value: "x" } });
-    expect(update).toHaveBeenCalledWith("n1", { columns: ["A", "B"], rows: [["1", "2"], ["x", ""], ["", ""], ["", ""]] });
+    expect(update).toHaveBeenCalledWith("n1", {
+      columns: ["A", "B", ""],
+      rows: [["1", "2", "3"], ["x", "", ""], ["raro", "", ""], ["", "", ""]],
+    });
   });
 
   it("renders a node with no rows or columns at all", () => {

@@ -1,3 +1,4 @@
+import "./datagrid.css";
 import { useState } from "react";
 import {
   addLabel,
@@ -8,7 +9,8 @@ import {
   renameLabel,
   renameSeries,
   setValue,
-  type EditableData,
+  type ChartPatch,
+  type ChartRaw,
   type PreparedChart,
 } from "./chartData";
 import { useScrollable } from "./useScrollable";
@@ -37,12 +39,16 @@ function NumberCell({ value, label, onCommit }: { value: number | null; label: s
   );
 }
 
+/** «name» for the delete buttons' accessible names, or its 1-based position when the name is empty. */
+const quoted = (name: string, position: number) => (name.trim() ? `«${name}»` : String(position));
+
 /**
  * Compact editable table of the chart data: labels as rows, series as columns.
- * It displays the hardened `prepared` data; `edit` receives a function that maps
- * the normalized data to the new data and writes it to the node.
+ * It DISPLAYS the hardened `prepared` data (a gap is an empty cell), but `edit`
+ * hands the node's raw data to a patch function and writes its result, so an edit
+ * never rewrites cells the user did not touch.
  */
-export function ChartDataGrid({ prepared, edit }: { prepared: PreparedChart; edit: (fn: (d: EditableData) => EditableData) => void }) {
+export function ChartDataGrid({ prepared, edit }: { prepared: PreparedChart; edit: (fn: (raw: ChartRaw) => ChartPatch) => void }) {
   const [scrollRef, scrollable] = useScrollable<HTMLDivElement>();
   return (
     <div className="table-body">
@@ -60,7 +66,7 @@ export function ChartDataGrid({ prepared, edit }: { prepared: PreparedChart; edi
                       value={s.name}
                       onChange={(e) => edit((d) => renameSeries(d, j, e.target.value))}
                     />
-                    <button type="button" className="cell-del" aria-label={`Quitar serie ${j + 1}`} title="Quitar serie" onClick={() => edit((d) => removeSeries(d, j))}>
+                    <button type="button" className="cell-del" aria-label={`Eliminar serie ${quoted(s.name, j + 1)}`} title="Eliminar serie" onClick={() => edit((d) => removeSeries(d, j))}>
                       ×
                     </button>
                   </div>
@@ -86,7 +92,7 @@ export function ChartDataGrid({ prepared, edit }: { prepared: PreparedChart; edi
                   </td>
                 ))}
                 <td className="row-tools">
-                  <button type="button" className="cell-del" aria-label={`Quitar etiqueta ${i + 1}`} title="Quitar etiqueta" onClick={() => edit((d) => removeLabel(d, i))}>
+                  <button type="button" className="cell-del" aria-label={`Eliminar etiqueta ${quoted(label, i + 1)}`} title="Eliminar etiqueta" onClick={() => edit((d) => removeLabel(d, i))}>
                     ×
                   </button>
                 </td>

@@ -1,3 +1,4 @@
+import "./datagrid.css";
 import type { NodeProps } from "@xyflow/react";
 import { useMemo, useRef, type KeyboardEvent } from "react";
 import { useBoardActions } from "../boardActions";
@@ -11,8 +12,10 @@ import { useScrollable } from "./useScrollable";
 /**
  * Editable table. `columns` and `rows` can arrive ragged or with non-strings
  * (hand-written or edited by Claude): the view pads/truncates and coerces for
- * display only, and the first edit writes back normalized NEW arrays. Opening,
- * selecting, focusing and blurring never write.
+ * display only, and the first edit writes back what is shown as NEW arrays (never
+ * dropping a cell, see tableData.ts). Opening, selecting, focusing and blurring
+ * never write. The delete buttons are ordinary tab stops: Tab walks a row's
+ * cells and then reaches its delete button.
  */
 export function TableNode({ id, data, selected }: NodeProps<FlowNode>) {
   const { update } = useBoardActions();
@@ -66,9 +69,8 @@ export function TableNode({ id, data, selected }: NodeProps<FlowNode>) {
                       <button
                         type="button"
                         className="cell-del"
-                        aria-label={`Borrar columna ${c + 1}`}
-                        title="Borrar columna"
-                        tabIndex={-1}
+                        aria-label={`Eliminar columna ${h.trim() ? `«${h}»` : c + 1}`}
+                        title="Eliminar columna"
                         disabled={!canDeleteColumn}
                         onClick={() => write(deleteColumn(data, c))}
                       >
@@ -100,9 +102,8 @@ export function TableNode({ id, data, selected }: NodeProps<FlowNode>) {
                     <button
                       type="button"
                       className="cell-del"
-                      aria-label={`Borrar fila ${r + 1}`}
-                      title="Borrar fila"
-                      tabIndex={-1}
+                      aria-label={`Eliminar fila ${r + 1}`}
+                      title="Eliminar fila"
                       onClick={() => write(deleteRow(data, r))}
                     >
                       ×

@@ -54,4 +54,17 @@ describe("ChartCanvas (real recharts at a fixed size)", () => {
     const { container } = draw({ kind: "bar", labels: ["A", "B"], series });
     expect(container.querySelector(".recharts-wrapper")).not.toBeNull();
   });
+
+  it("duplicate labels stay separate data points: two bars and two dots, even with the same label", () => {
+    const dup = { labels: ["Ene", "Ene"], series: [{ name: "S1", values: [3, 7] }] };
+    const bars = draw({ kind: "bar", ...dup });
+    const xs = [...bars.container.querySelectorAll(".recharts-bar-rectangle path")].map((e) => e.getAttribute("x") ?? e.getAttribute("d"));
+    expect(xs).toHaveLength(2);
+    expect(new Set(xs).size).toBe(2);
+    bars.unmount();
+    const line = draw({ kind: "line", ...dup });
+    const cx = [...line.container.querySelectorAll(".recharts-line-dots circle")].map((c) => c.getAttribute("cx"));
+    expect(cx).toHaveLength(2);
+    expect(new Set(cx).size).toBe(2);
+  });
 });

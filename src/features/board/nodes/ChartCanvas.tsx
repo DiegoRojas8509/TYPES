@@ -2,6 +2,7 @@
 // (`prepareChartData`), so it can assume well-formed rows. Marks follow the
 // dataviz specs: bars 24px at most with 4px rounded data ends, 2px lines with
 // 8px dots ringed in the surface colour, recessive hairline grid, no animation.
+import { memo } from "react";
 import { Bar, BarChart, CartesianGrid, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { chartColor } from "./chartColors";
 import type { PreparedChart } from "./chartData";
@@ -11,25 +12,40 @@ const compact = new Intl.NumberFormat("es-MX", { notation: "compact", maximumFra
 const tick = { fill: "var(--text-muted)", fontSize: 11 };
 const margin = { top: 8, right: 8, bottom: 0, left: 0 };
 
-const tooltip = (
+const labelAt = (labels: string[], idx: unknown): string | undefined => (typeof idx === "number" ? labels[idx] : undefined);
+
+/**
+ * The x axis is keyed by the row INDEX, with the label looked up for ticks and the
+ * tooltip: keying by label would merge rows that share one ("Ene" twice) into a
+ * single band and draw wrong data without any warning.
+ */
+const tooltipFor = (labels: string[]) => (
   <Tooltip
     isAnimationActive={false}
     cursor={{ fill: "var(--bg-hover)", stroke: "var(--border-strong)" }}
-    content={(p) => <ChartTooltip active={p.active} payload={p.payload} label={p.label} />}
+    content={(p) => <ChartTooltip active={p.active} payload={p.payload} label={labelAt(labels, p.label)} />}
   />
 );
 
-function Axes() {
+function Axes({ labels }: { labels: string[] }) {
   return (
     <>
       <CartesianGrid vertical={false} stroke="var(--border)" />
-      <XAxis dataKey="label" tickLine={false} axisLine={{ stroke: "var(--border-strong)" }} tick={tick} minTickGap={8} />
+      <XAxis
+        dataKey="idx"
+        tickFormatter={(i: number) => labels[i] ?? ""}
+        tickLine={false}
+        axisLine={{ stroke: "var(--border-strong)" }}
+        tick={tick}
+        minTickGap={8}
+      />
       <YAxis width="auto" tickLine={false} axisLine={false} tick={tick} tickFormatter={(v: number) => compact.format(v)} />
     </>
   );
 }
 
-export function ChartCanvas({ data }: { data: PreparedChart }) {
+/** Memoized: it only redraws when the hardened data changes (not on every selection or drag of the node). */
+export const ChartCanvas = memo(function ChartCanvas({ data }: { data: PreparedChart }) {
   return (
     <ResponsiveContainer width="100%" height="100%">
       {data.kind === "pie" ? (
@@ -43,12 +59,12 @@ export function ChartCanvas({ data }: { data: PreparedChart }) {
             strokeWidth={2}
             isAnimationActive={false}
           />
-          {tooltip}
+          {tooltipFor(data.labels)}
         </PieChart>
       ) : data.kind === "line" ? (
         <LineChart data={data.rows} margin={margin}>
-          {Axes()}
-          {tooltip}
+          {Axes({ labels: data.labels })}
+          {tooltipFor(data.labels)}
           {data.series.map((s, j) => (
             <Line
               key={j}
@@ -66,8 +82,8 @@ export function ChartCanvas({ data }: { data: PreparedChart }) {
         </LineChart>
       ) : (
         <BarChart data={data.rows} margin={margin} barGap={2}>
-          {Axes()}
-          {tooltip}
+          {Axes({ labels: data.labels })}
+          {tooltipFor(data.labels)}
           {data.series.map((s, j) => (
             <Bar key={j} dataKey={`s${j}`} name={s.name} fill={chartColor(j)} radius={[4, 4, 0, 0]} maxBarSize={24} isAnimationActive={false} />
           ))}
@@ -75,4 +91,4 @@ export function ChartCanvas({ data }: { data: PreparedChart }) {
       )}
     </ResponsiveContainer>
   );
-}
+});

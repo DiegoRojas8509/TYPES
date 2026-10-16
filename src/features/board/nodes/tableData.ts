@@ -1,7 +1,10 @@
 // Pure data helpers of the table block. A `.canvas` can be hand-written or edited
-// by Claude, so `columns` and `rows` may be missing, ragged or hold non-strings:
-// everything shown goes through `tableView`, and every edit writes back normalized
-// data (each row exactly `columns.length` strings) as NEW arrays.
+// by Claude, so `columns` and `rows` may be missing, ragged or hold non-strings.
+// Everything shown goes through `tableView`, and every edit writes back what the
+// view shows, as NEW arrays. The user's data wins over tidiness: a table is never
+// truncated. When a row has more cells than there are headers, the table widens
+// (extra empty headers) instead of dropping those cells, and short rows are padded
+// with "". Only an explicit `deleteColumn` removes cells.
 
 export interface TableData {
   columns: string[];
@@ -12,13 +15,18 @@ type Raw = Record<string, unknown>;
 
 const cellText = (v: unknown): string => String(v ?? "");
 
-/** The table as it is displayed: strings only, rows padded or truncated to the column count. */
+/** A row as a list of cells: an array as is; a lone string/number/boolean is its first cell; anything else is empty. */
+function rowCells(r: unknown): unknown[] {
+  if (Array.isArray(r)) return r;
+  return r !== null && typeof r !== "object" && r !== undefined ? [r] : [];
+}
+
+/** The table as displayed and written back: strings only, as wide as its widest row or header list, never truncated. */
 export function tableView(raw: Raw): TableData {
   const cols = Array.isArray(raw.columns) ? raw.columns.map(cellText) : [];
-  const rawRows: unknown[][] = Array.isArray(raw.rows) ? raw.rows.map((r) => (Array.isArray(r) ? r : [])) : [];
-  // No headers at all: keep as many (empty) columns as the widest row has, and at least one.
-  const width = cols.length > 0 ? cols.length : Math.max(1, ...rawRows.map((r) => r.length));
-  const columns = cols.length > 0 ? cols : Array.from({ length: width }, () => "");
+  const rawRows = Array.isArray(raw.rows) ? raw.rows.map(rowCells) : [];
+  const width = Math.max(1, cols.length, ...rawRows.map((r) => r.length));
+  const columns = Array.from({ length: width }, (_, i) => cols[i] ?? "");
   const rows = rawRows.map((r) => Array.from({ length: width }, (_, i) => cellText(r[i])));
   return { columns, rows };
 }

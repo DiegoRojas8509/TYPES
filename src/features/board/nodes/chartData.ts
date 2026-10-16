@@ -22,14 +22,20 @@ export interface PreparedChart {
   title: string;
   labels: string[];
   series: PreparedSeries[];
-  /** Recharts rows: `{ label, s0, s1, ... }`, one per label. */
+  /**
+   * Recharts rows: `{ label, idx, s0, s1, ... }`, one per label. The x axis uses `idx`
+   * (never `label`), so two rows with the same label stay two separate points.
+   */
   rows: Record<string, string | number | null>[];
   /** No labels or no series: nothing to draw. */
   empty: boolean;
   pie: { slices: PieSlice[]; seriesName: string; extraSeries: boolean };
 }
 
-type Raw = Record<string, unknown>;
+export type ChartRaw = Record<string, unknown>;
+type Raw = ChartRaw;
+
+const isObj = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v);
 
 /** Finite numbers and strings that parse as one ("12.5"); anything else is a gap. */
 function toNumber(v: unknown): number | null {
@@ -46,7 +52,7 @@ const text = (v: unknown): string => String(v ?? "");
 function readSeries(raw: unknown, labelCount: number): PreparedSeries[] {
   if (!Array.isArray(raw)) return [];
   return raw.map((s, i) => {
-    const obj = s !== null && typeof s === "object" ? (s as { name?: unknown; values?: unknown }) : {};
+    const obj: { name?: unknown; values?: unknown } = isObj(s) ? s : {};
     const values = Array.isArray(obj.values) ? obj.values : [];
     return {
       name: obj.name === undefined || obj.name === null || obj.name === "" ? `Serie ${i + 1}` : text(obj.name),
@@ -61,7 +67,7 @@ export function prepareChartData(raw: Raw): PreparedChart {
   const labels = Array.isArray(raw.labels) ? raw.labels.map(text) : [];
   const series = readSeries(raw.series, labels.length);
   const rows = labels.map((label, i) => {
-    const row: Record<string, string | number | null> = { label };
+    const row: Record<string, string | number | null> = { label, idx: i };
     series.forEach((s, j) => {
       row[`s${j}`] = s.values[i];
     });
@@ -100,47 +106,86 @@ export function parseNumberInput(raw: string): number | null {
 }
 
 // ---- editing ---------------------------------------------------------------
+//
+// Edits are made on the node's RAW arrays, never on the hardened display data:
+// a cell edit must not rewrite what the user did not touch (a gap stays a gap,
+// "n/a" stays "n/a", extra fields on a series and values beyond the labels
+// survive, a non-object series entry stays as found). Each helper returns NEW
+// arrays; untouched entries keep their identity and are never mutated.
 
-export interface EditableData {
-  labels: string[];
-  series: { name: string; values: number[] }[];
+export interface ChartPatch {
+  labels: unknown[];
+  series: unknown[];
 }
+
+const rawLabels = (raw: Raw): unknown[] => (Array.isArray(raw.labels) ? raw.labels : []);
+const rawSeries = (raw: Raw): unknown[] => (Array.isArray(raw.series) ? raw.series : []);
+const valuesOf = (s: unknown): unknown[] | null => (isObj(s) && Array.isArray(s.values) ? s.values : null);
 
 /**
- * The data as the grid edits it: labels and series normalized to what the file
- * should hold. Gaps (missing or invalid values) become 0 here, so editing one
- * cell also writes the repairs for the others. Opening the grid writes nothing.
+ * Sets one value. A series shorter than the edited row is padded with 0 only up
+ * to that row (the stored array cannot hold a gap before a real value); every
+ * other element is left exactly as found. A series entry that is not an object
+ * (or whose `values` is not an array) is rebuilt, since the user touched it.
  */
-export function editableData(raw: Raw): EditableData {
-  const p = prepareChartData(raw);
-  return { labels: p.labels, series: p.series.map((s) => ({ name: s.name, values: s.values.map((v) => v ?? 0) })) };
+export function setValue(raw: Raw, row: number, serie: number, value: number): ChartPatch {
+  return {
+    labels: [...rawLabels(raw)],
+    series: rawSeries(raw).map((s, j) => {
+      if (j !== serie) return s;
+      const values = [...(valuesOf(s) ?? [])];
+      while (values.length < row) values.push(0);
+      values[row] = value;
+      return { ...(isObj(s) ? s : { name: `Serie ${j + 1}` }), values };
+    }),
+  };
 }
 
-export const setValue = (d: EditableData, row: number, serie: number, value: number): EditableData => ({
-  labels: d.labels,
-  series: d.series.map((s, j) => (j === serie ? { ...s, values: s.values.map((v, i) => (i === row ? value : v)) } : s)),
+export const renameLabel = (raw: Raw, row: number, name: string): ChartPatch => ({
+  labels: rawLabels(raw).map((l, i) => (i === row ? name : l)),
+  series: [...rawSeries(raw)],
 });
-export const renameLabel = (d: EditableData, row: number, name: string): EditableData => ({
-  labels: d.labels.map((l, i) => (i === row ? name : l)),
-  series: d.series,
+
+export const renameSeries = (raw: Raw, serie: number, name: string): ChartPatch => ({
+  labels: [...rawLabels(raw)],
+  series: rawSeries(raw).map((s, j) => (j !== serie ? s : isObj(s) ? { ...s, name } : { name, values: [] })),
 });
-export const renameSeries = (d: EditableData, serie: number, name: string): EditableData => ({
-  labels: d.labels,
-  series: d.series.map((s, j) => (j === serie ? { ...s, name } : s)),
+
+/**
+ * Appends a label. Only a series that was already exactly full-length gets a 0
+ * for the new column: a shorter one already has implicit gaps (the new label is
+ * just one more), and a longer one already holds a value for it. Non-object
+ * entries and series without a `values` array are left alone.
+ */
+export function addLabel(raw: Raw): ChartPatch {
+  const labels = rawLabels(raw);
+  return {
+    labels: [...labels, `Etiqueta ${labels.length + 1}`],
+    series: rawSeries(raw).map((s) => {
+      const values = valuesOf(s);
+      return values && values.length === labels.length ? { ...(s as object), values: [...values, 0] } : s;
+    }),
+  };
+}
+
+/** Removes the label at `row` and that index from every series' `values` (when it has one). */
+export const removeLabel = (raw: Raw, row: number): ChartPatch => ({
+  labels: rawLabels(raw).filter((_, i) => i !== row),
+  series: rawSeries(raw).map((s) => {
+    const values = valuesOf(s);
+    return values && row < values.length ? { ...(s as object), values: values.filter((_, i) => i !== row) } : s;
+  }),
 });
-export const addLabel = (d: EditableData): EditableData => ({
-  labels: [...d.labels, `Etiqueta ${d.labels.length + 1}`],
-  series: d.series.map((s) => ({ ...s, values: [...s.values, 0] })),
-});
-export const removeLabel = (d: EditableData, row: number): EditableData => ({
-  labels: d.labels.filter((_, i) => i !== row),
-  series: d.series.map((s) => ({ ...s, values: s.values.filter((_, i) => i !== row) })),
-});
-export const addSeries = (d: EditableData): EditableData => ({
-  labels: d.labels,
-  series: [...d.series, { name: `Serie ${d.series.length + 1}`, values: d.labels.map(() => 0) }],
-});
-export const removeSeries = (d: EditableData, serie: number): EditableData => ({
-  labels: d.labels,
-  series: d.series.filter((_, j) => j !== serie),
+
+export const addSeries = (raw: Raw): ChartPatch => {
+  const series = rawSeries(raw);
+  return {
+    labels: [...rawLabels(raw)],
+    series: [...series, { name: `Serie ${series.length + 1}`, values: rawLabels(raw).map(() => 0) }],
+  };
+};
+
+export const removeSeries = (raw: Raw, serie: number): ChartPatch => ({
+  labels: [...rawLabels(raw)],
+  series: rawSeries(raw).filter((_, j) => j !== serie),
 });
