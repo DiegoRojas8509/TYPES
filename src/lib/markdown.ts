@@ -58,6 +58,10 @@ export function relativeSrc(pagePath: string, target: string): string {
 /**
  * Display URL for an image. On disk the Markdown keeps the relative path; this
  * only maps it to an asset URL built from the absolute workspace root.
+ * Returns "" for anything that is not a file inside the workspace (http(s), `//host`,
+ * data:, javascript:, absolute or escaping paths): a note must not make the webview
+ * request a URL just by being opened. The caller renders no `src` for "". An asset
+ * URL that points inside the workspace is ours and passes through.
  */
 export function resolveImageSrc(
   pagePath: string,
@@ -65,9 +69,12 @@ export function resolveImageSrc(
   workspaceRoot: string | null,
   toAssetUrl: (absolutePath: string) => string,
 ): string {
-  if (!workspaceRoot) return src;
   const rel = resolveWorkspacePath(pagePath, src);
-  if (rel === null) return src;
+  if (rel === null) {
+    const abs = workspaceRoot ? pathFromAssetUrl(src) : null;
+    return abs !== null && abs.startsWith(`${workspaceRoot!.replace(/\/+$/, "")}/`) ? src : "";
+  }
+  if (!workspaceRoot) return src;
   return toAssetUrl(`${workspaceRoot.replace(/\/+$/, "")}/${rel}`);
 }
 

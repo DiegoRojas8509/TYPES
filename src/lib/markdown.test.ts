@@ -171,8 +171,46 @@ describe("image paths", () => {
       expect(url).toMatch(/^asset:/);
       expect(unresolveImageSrc(page, url, root, pathFromAssetUrl)).toBe(src);
     }
-    expect(resolveImageSrc("Ropa/a.md", "https://x/y.png", root, toUrl)).toBe("https://x/y.png");
     expect(resolveImageSrc("Ropa/a.md", "adjuntos/a.png", null, toUrl)).toBe("adjuntos/a.png");
+  });
+
+  it("drops_every_src_that_is_not_a_workspace_file_so_a_note_cannot_make_a_request", () => {
+    const root = "/Users/d/TYPES-espacios";
+    const toUrl = (p: string) => `asset://localhost/${encodeURIComponent(p)}`;
+    for (const src of [
+      "https://attacker.example/p.png?d=1",
+      "http://attacker.example/p.png",
+      "//attacker.example/p.png",
+      "data:image/png;base64,AAAA",
+      "javascript:alert(1)",
+      "../../x.png",
+      "/etc/hosts",
+      "asset://localhost/" + encodeURIComponent("/Users/d/otra-carpeta/x.png"),
+      "",
+    ]) {
+      expect(resolveImageSrc("Ropa/Telas.md", src, root, toUrl), src).toBe("");
+      expect(resolveImageSrc("Ropa/Telas.md", src, null, toUrl), `${src} (no root)`).toBe("");
+    }
+    // an asset URL that points inside the workspace is ours and still displays
+    const inside = toUrl(`${root}/Ropa/adjuntos/a.png`);
+    expect(resolveImageSrc("Ropa/Telas.md", inside, root, toUrl)).toBe(inside);
+  });
+
+  it("an_external_image_renders_without_a_src_attribute_but_keeps_its_alt_and_stays_in_the_file", () => {
+    const options: ExtensionOptions = {
+      resolveSrc: (src) => resolveImageSrc("Ropa/Telas.md", src, "/Users/d/TYPES-espacios", (p) => `asset://localhost/${encodeURIComponent(p)}`),
+      toDiskSrc: (src) => unresolveImageSrc("Ropa/Telas.md", src, "/Users/d/TYPES-espacios", pathFromAssetUrl),
+    };
+    const md = "![mi foto](https://attacker.example/p.png?d=1)\n";
+    const editor = new Editor({ extensions: createExtensions(options) });
+    editor.commands.setContent(md, { contentType: "markdown", emitUpdate: false });
+    const html = editor.getHTML();
+    expect(html).not.toContain("attacker.example");
+    expect(html).not.toMatch(/<img[^>]*\ssrc=/);
+    expect(html).toContain('alt="mi foto"');
+    // nothing is rewritten: the file still says what Diego's note said
+    expect(editor.getMarkdown()).toBe("![mi foto](https://attacker.example/p.png?d=1)");
+    editor.destroy();
   });
 });
 

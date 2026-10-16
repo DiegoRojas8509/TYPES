@@ -30,7 +30,8 @@ export function createExtensions(options: ExtensionOptions = {}): AnyExtension[]
       return title ? `![${alt}](${src} "${title}")` : `![${alt}](${src})`;
     },
     renderHTML({ HTMLAttributes }) {
-      const src = typeof HTMLAttributes.src === "string" ? resolveSrc(HTMLAttributes.src) : undefined;
+      // An empty display src (external or escaping image) is left out, so the <img> shows its alt text and requests nothing.
+      const src = typeof HTMLAttributes.src === "string" ? resolveSrc(HTMLAttributes.src) || undefined : undefined;
       return ["img", { ...this.options.HTMLAttributes, ...HTMLAttributes, src }];
     },
   });
