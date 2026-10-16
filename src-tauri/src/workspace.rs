@@ -332,7 +332,19 @@ pub fn delete_entry_with(
 }
 
 fn system_trash(p: &Path) -> Result<()> {
-    trash::delete(p).map_err(|e| AppError::Io(e.to_string()))
+    // On macOS the default Finder method is slow, shows a progress window and
+    // asks for Automation permission; NSFileManager moves to the trash silently.
+    #[cfg(target_os = "macos")]
+    {
+        use trash::macos::{DeleteMethod, TrashContextExtMacos};
+        let mut ctx = trash::TrashContext::default();
+        ctx.set_delete_method(DeleteMethod::NsFileManager);
+        ctx.delete(p).map_err(|e| AppError::Io(e.to_string()))
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        trash::delete(p).map_err(|e| AppError::Io(e.to_string()))
+    }
 }
 
 /// Returns `<root>/<space>/adjuntos`, creating `adjuntos` if needed.
