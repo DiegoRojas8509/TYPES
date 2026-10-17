@@ -182,16 +182,20 @@ pub fn ensure_root(root: &Path) -> Result<()> {
 /// Any other line (including ones Diego edited) is kept; idempotent; errors are ignored
 /// because this is a best-effort courtesy that must never block startup.
 fn migrate_old_image_lines(root: &Path) {
-    let mut files = vec![root.join("CLAUDE.md")];
+    let mut files = vec!["CLAUDE.md".to_string()];
     if let Ok(entries) = std::fs::read_dir(root) {
         for e in entries.flatten() {
-            if e.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                files.push(e.path().join("CLAUDE.md"));
+            let is_dir = e.file_type().map(|t| t.is_dir()).unwrap_or(false);
+            if let (true, Some(name)) = (is_dir, e.file_name().to_str()) {
+                if !name.starts_with('.') {
+                    files.push(format!("{name}/CLAUDE.md"));
+                }
             }
         }
     }
-    for file in files {
-        let Ok(text) = std::fs::read_to_string(&file) else { continue };
+    for rel in files {
+        // `resolve` (inside read/write) rejects a CLAUDE.md symlinked outside the workspace.
+        let Ok(text) = read_text_in(root, &rel) else { continue };
         let migrated = text
             .split('\n')
             .map(|line| {
@@ -203,7 +207,7 @@ fn migrate_old_image_lines(root: &Path) {
             .collect::<Vec<_>>()
             .join("\n");
         if migrated != text {
-            let _ = std::fs::write(&file, migrated);
+            let _ = write_text_in(root, &rel, &migrated);
         }
     }
 }
@@ -418,7 +422,12 @@ fn copy_recursive(from: &Path, to: &Path) -> std::io::Result<()> {
         }
         Ok(())
     } else {
-        std::fs::copy(from, to).map(|_| ())
+        // create_new: a file that appeared at `to` meanwhile is never truncated.
+        let mut src = std::fs::File::open(from)?;
+        let mut dst = std::fs::OpenOptions::new().write(true).create_new(true).open(to)?;
+        std::io::copy(&mut src, &mut dst)?;
+        std::fs::set_permissions(to, md.permissions())?;
+        Ok(())
     }
 }
 
@@ -1214,5 +1223,42 @@ mod tests {
         for (old, _) in LINE_MIGRATIONS {
             assert!(!ROOT_CLAUDE_MD.contains(old) && !SPACE_CLAUDE_MD.contains(old) && !BOARDS_SECTION.contains(old));
         }
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn migration_never_writes_through_a_symlinked_claude_md() {
+        let (d, root) = ws();
+        create_space_in(&root, "Ropa").unwrap();
+        let outside = d.path().join("outside.md");
+        let body = format!("{OLD_ROOT_LINE}\n");
+        fs::write(&outside, &body).unwrap();
+        fs::write(root.join("CLAUDE.md"), "mío\n").unwrap();
+        fs::remove_file(root.join("Ropa/CLAUDE.md")).unwrap();
+        std::os::unix::fs::symlink(&outside, root.join("Ropa/CLAUDE.md")).unwrap();
+        std::os::unix::fs::symlink(&outside, root.join("Ropa/other.md")).unwrap();
+        ensure_root(&root).unwrap();
+        assert_eq!(fs::read_to_string(&outside).unwrap(), body);
+        assert!(fs::symlink_metadata(root.join("Ropa/CLAUDE.md")).unwrap().file_type().is_symlink());
+    }
+
+    #[test]
+    fn migration_leaves_crlf_lines_untouched() {
+        let (_d, root) = ws();
+        let crlf = format!("# x\r\n{OLD_ROOT_LINE}\r\nfin\r\n## Pizarras\r\n");
+        fs::write(root.join("CLAUDE.md"), &crlf).unwrap();
+        ensure_root(&root).unwrap();
+        assert_eq!(fs::read_to_string(root.join("CLAUDE.md")).unwrap(), crlf);
+    }
+
+    #[test]
+    fn cross_device_copy_never_truncates_a_file_that_appeared() {
+        let d = tempfile::tempdir().unwrap();
+        let from = d.path().join("a.txt");
+        let to = d.path().join("b.txt");
+        fs::write(&from, "origen").unwrap();
+        fs::write(&to, "mío").unwrap();
+        assert!(copy_recursive(&from, &to).is_err());
+        assert_eq!(fs::read_to_string(&to).unwrap(), "mío");
     }
 }
