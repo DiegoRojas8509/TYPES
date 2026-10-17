@@ -30,7 +30,7 @@ const last = { original: "Ropa/Notas.md", trashed: "/t/Notas.md" };
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(api.restoreEntry).mockResolvedValue("Ropa/Notas.md");
-  useApp.setState({ ...initialState(), lastDeleted: last });
+  useApp.setState({ ...initialState(), lastDeleted: last, lastDeletedAt: Date.now() });
 });
 
 describe("useUndoShortcut", () => {
@@ -66,6 +66,12 @@ describe("useUndoShortcut", () => {
     fireEvent.keyDown(document.body, { key: "z", metaKey: true, shiftKey: true });
     fireEvent.keyDown(document.body, { key: "z" });
     fireEvent.keyDown(document.body, { key: "y", metaKey: true });
+    expect(api.restoreEntry).not.toHaveBeenCalled();
+  });
+
+  it("ignores key repeat", () => {
+    const { getByTestId } = render(<Host />);
+    expect(fireEvent.keyDown(getByTestId("plain"), { key: "z", metaKey: true, repeat: true })).toBe(true);
     expect(api.restoreEntry).not.toHaveBeenCalled();
   });
 

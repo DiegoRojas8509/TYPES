@@ -56,7 +56,7 @@ espacios/
 ### Backend (Rust, `src-tauri/src/`)
 | Módulo | Responsabilidad |
 |--------|-----------------|
-| `workspace.rs` | Raíz del workspace, árbol, leer/escribir, crear/renombrar/borrar (a la papelera), importar archivos, `create_board`, repositorio de imágenes por carpeta (`save_image`/`list_images` sobre `<carpeta>/Imágenes/`, `save_attachment` para el chat), `delete_entry` (devuelve `{original, trashed}`) y `restore_entry` (deshacer), y la migración de arranque de los CLAUDE.md viejos (crea un `.canvas` vacío sin pisar nombres). Toda ruta se valida contra la raíz. |
+| `workspace.rs` | Raíz del workspace, árbol, leer/escribir, crear/renombrar/borrar (a la papelera), importar archivos, `create_board` (crea un `.canvas` vacío sin pisar nombres), repositorio de imágenes por carpeta (`save_image`/`list_images` sobre `<carpeta>/Imágenes/`, `save_attachment` para el chat), `delete_entry` (devuelve `{original, trashed}`) y `restore_entry` (deshacer), y la migración de arranque de los CLAUDE.md viejos. Toda ruta se valida contra la raíz. |
 | `templates.rs` | Plantillas de los CLAUDE.md del workspace y de cada espacio, incluida la sección `## Pizarras` y las líneas viejas de `adjuntos/` que la migración reemplaza (reglas del `.canvas` para Claude; se agrega al CLAUDE.md raíz existente sin tocar el resto). |
 | `watcher.rs` | Vigila el workspace y emite el evento `fs-changed` al frontend. |
 | `claude.rs` | Localiza el binario de Claude Code, lo lanza en la carpeta del espacio y retransmite su salida como eventos `claude-event`. |

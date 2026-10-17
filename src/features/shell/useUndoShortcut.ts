@@ -9,6 +9,7 @@ const TEXT_TARGET = "input, textarea, select, [contenteditable]:not([contentedit
 export function useUndoShortcut(): void {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      if (e.repeat) return;
       if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== "z") return;
       if (!useApp.getState().lastDeleted) return;
       if (e.target instanceof Element && e.target.closest(TEXT_TARGET)) return;

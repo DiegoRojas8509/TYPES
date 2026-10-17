@@ -250,6 +250,23 @@ describe("ImagePanel", () => {
     expect(screen.getAllByRole("listitem")).toHaveLength(3);
   });
 
+  it("a failed thumbnail recovers when an fs change touches its path, other changes leave the src alone", async () => {
+    await mount();
+    await openPanel();
+    const img = () => document.querySelector(".image-thumb img") as HTMLImageElement | null;
+    const first = img()!.getAttribute("src");
+    await act(async () => {
+      useApp.setState({ fsChange: { seq: 5, paths: ["Ropa/otra.md"] } });
+    });
+    expect(img()!.getAttribute("src")).toBe(first);
+    fireEvent.error(img()!);
+    expect(img()).toBeNull();
+    await act(async () => {
+      useApp.setState({ fsChange: { seq: 6, paths: ["Ropa/Imágenes/b.png"] } });
+    });
+    expect(img()!.getAttribute("src")).toBe(`${first}?v=6`);
+  });
+
   it("renders the panel inside the host element instead of the toolbar", async () => {
     const host = document.createElement("div");
     host.className = "board-flow";

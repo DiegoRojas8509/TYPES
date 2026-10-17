@@ -32,6 +32,8 @@ export interface AppState {
   notice: Notice | null;
   /** The last delete that can be undone (null when none, or when its trash location is unknown). */
   lastDeleted: DeletedEntry | null;
+  /** When `lastDeleted` happened (ms since epoch); the undo expires after `UNDO_WINDOW_MS`. */
+  lastDeletedAt: number;
 
   init(): Promise<void>;
   refreshTree(): Promise<void>;
@@ -68,6 +70,7 @@ export function initialState() {
     fsChange: null,
     notice: null,
     lastDeleted: null,
+    lastDeletedAt: 0,
   } satisfies Partial<AppState>;
 }
 
@@ -201,12 +204,19 @@ export const useApp = create<AppState>()((set, get) => {
     },
 
     async deleteEntry(path) {
+      // Close the open document first and let it flush: otherwise its pending
+      // text would be written after the trashing and resurrect the file.
+      if (get().openPath !== null && isWithin(get().openPath!, path)) {
+        set({ openPath: null });
+        await new Promise<void>((r) => setTimeout(r, 0));
+      }
       const deleted = await attempt(() => api.deleteEntry(path));
       if (!deleted) return false;
       set((s) => {
         const expanded = Object.fromEntries(Object.entries(s.expanded).filter(([k]) => !isWithin(k, path)));
         return {
           lastDeleted: deleted.trashed ? deleted : null,
+          lastDeletedAt: Date.now(),
           expanded,
           openPath: s.openPath !== null && isWithin(s.openPath, path) ? null : s.openPath,
           activeSpace: s.activeSpace !== null && isWithin(s.activeSpace, path) ? null : s.activeSpace,
@@ -219,14 +229,26 @@ export const useApp = create<AppState>()((set, get) => {
     async undoDelete() {
       const last = get().lastDeleted;
       if (!last) return;
-      const restored = await attempt(() => api.restoreEntry(last.original, last.trashed));
-      if (restored === undefined) return;
+      if (Date.now() - get().lastDeletedAt > UNDO_WINDOW_MS) {
+        set({ lastDeleted: null });
+        return;
+      }
+      // Claim it before awaiting so a second trigger cannot restore it again.
       set({ lastDeleted: null });
+      const restored = await attempt(() => api.restoreEntry(last.original, last.trashed));
+      if (restored === undefined) {
+        // Keep it for a retry, unless a newer delete took its place meanwhile.
+        if (get().lastDeleted === null) set({ lastDeleted: last });
+        return;
+      }
       await get().refreshTree();
       get().notify(`Se restauró «${titleOf(restored)}»`, "info");
     },
   };
 });
+
+/** How long after a delete Cmd+Z still brings it back. */
+export const UNDO_WINDOW_MS = 120_000;
 
 /** Subscribes the tree to `fs-changed`. Resolves with the unlisten function. */
 export async function startSync(): Promise<() => void> {

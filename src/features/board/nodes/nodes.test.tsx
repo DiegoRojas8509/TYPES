@@ -297,6 +297,23 @@ describe("ImageNode", () => {
     expect(container.querySelector("img")?.getAttribute("src")).toBe(assetFor("Ropa/adjuntos/c.png"));
   });
 
+  it("recovers when an fs change touches the failed image (restore) and busts the cache", () => {
+    const { container } = render(board(image("adjuntos/a.png")));
+    fireEvent.error(container.querySelector("img") as HTMLImageElement);
+    expect(container.querySelector("img")).toBeNull();
+    act(() => useApp.setState({ fsChange: { seq: 7, paths: ["Ropa/adjuntos/a.png"] } }));
+    expect(container.querySelector("img")?.getAttribute("src")).toBe(`${assetFor("Ropa/adjuntos/a.png")}?v=7`);
+  });
+
+  it("keeps the src stable and the failure when an unrelated path changes", () => {
+    const { container } = render(board(image("adjuntos/a.png")));
+    act(() => useApp.setState({ fsChange: { seq: 3, paths: ["Ropa/otra.md"] } }));
+    expect(container.querySelector("img")?.getAttribute("src")).toBe(assetFor("Ropa/adjuntos/a.png"));
+    fireEvent.error(container.querySelector("img") as HTMLImageElement);
+    act(() => useApp.setState({ fsChange: { seq: 4, paths: ["Ropa/otra.md"] } }));
+    expect(container.querySelector("img")).toBeNull();
+  });
+
   it("shows the empty-state card when there is no file yet", () => {
     const { container, getByText } = render(board(image("")));
     expect(getByText("Suelta una imagen aquí o pégala")).toBeInTheDocument();

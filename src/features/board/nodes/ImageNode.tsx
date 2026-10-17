@@ -1,11 +1,11 @@
 import type { NodeProps } from "@xyflow/react";
-import { useEffect, useState } from "react";
 import { assetUrl } from "../../../lib/api";
 import { resolveWorkspacePath } from "../../../lib/markdown";
 import { baseName } from "../../../lib/paths";
 import { useApp } from "../../../store/app";
 import { useBoardContext } from "../boardActions";
 import type { FlowNode } from "../boardModel";
+import { useImageUrl } from "../useImageUrl";
 import { BlockShell } from "./BlockShell";
 import { GlyphImage } from "./glyphs";
 
@@ -21,11 +21,10 @@ export function ImageNode({ id, data, selected }: NodeProps<FlowNode>) {
   // paths, http(s)/data/javascript values and `..` escapes resolve to null and
   // are treated as a missing image, never handed to <img> raw.
   const rel = file && root ? resolveWorkspacePath(boardPath, file) : null;
-  const src = rel !== null && root ? assetUrl(`${root.replace(/\/+$/, "")}/${rel}`) : "";
-  const [failed, setFailed] = useState(false);
+  const base = rel !== null && root ? assetUrl(`${root.replace(/\/+$/, "")}/${rel}`) : "";
+  // A new path, or an fs change on this very file (e.g. a restore), deserves a fresh try.
+  const { src, failed, setFailed } = useImageUrl(rel, base);
   const broken = failed || (file !== "" && src === "");
-  // A new path (Claude fixed it, or the image was replaced) deserves a fresh try.
-  useEffect(() => setFailed(false), [src]);
 
   const name = file ? baseName(file) : "";
   return (

@@ -523,9 +523,30 @@ pub fn save_image_in(root: &Path, dir: &str, file_name: &str, bytes: &[u8]) -> R
     let name = validate_name(file_name)?;
     let (images, rel_dir) = images_dir(root, dir, true)?;
     let (stem, ext) = split_ext(name);
-    let unique = unique_name(&images, stem, ext);
-    std::fs::write(images.join(&unique), bytes)?;
+    let first = unique_name(&images, stem, ext);
+    let unique = create_exclusive(&images, stem, ext, first, bytes)?;
     Ok(format!("{rel_dir}/{unique}"))
+}
+
+/// Writes `bytes` to a brand-new file, starting at `candidate` and moving on to
+/// `stem 2`, `stem 3`... whenever the name was taken meanwhile. `create_new`
+/// makes the check atomic, so a concurrent save can never be truncated.
+fn create_exclusive(dir: &Path, stem: &str, ext: &str, mut candidate: String, bytes: &[u8]) -> Result<String> {
+    use std::io::Write;
+    let mut n = 2;
+    loop {
+        match std::fs::OpenOptions::new().write(true).create_new(true).open(dir.join(&candidate)) {
+            Ok(mut f) => {
+                f.write_all(bytes)?;
+                return Ok(candidate);
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                candidate = format!("{stem} {n}{ext}");
+                n += 1;
+            }
+            Err(e) => return Err(e.into()),
+        }
+    }
 }
 
 pub fn list_images_in(root: &Path, dir: &str) -> Result<Vec<String>> {
@@ -930,6 +951,17 @@ mod tests {
     #[test]
     fn images_dir_name_is_nfc() {
         assert_eq!(IMAGES_DIR, "Im\u{e1}genes");
+    }
+
+    #[test]
+    fn create_exclusive_never_truncates_an_existing_file() {
+        let (_d, root) = ws();
+        fs::write(root.join("a.png"), [1, 2, 3]).unwrap();
+        // the first candidate was free when picked but got taken meanwhile
+        let name = create_exclusive(&root, "a", ".png", "a.png".into(), &[9]).unwrap();
+        assert_eq!(name, "a 2.png");
+        assert_eq!(fs::read(root.join("a.png")).unwrap(), [1, 2, 3]);
+        assert_eq!(fs::read(root.join("a 2.png")).unwrap(), [9]);
     }
 
     #[test]

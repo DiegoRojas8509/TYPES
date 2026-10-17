@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./api")>();
-  return { ...actual, api: { ...actual.api, readText: vi.fn(), writeText: vi.fn() } };
+  return { ...actual, api: { ...actual.api, readText: vi.fn(), writeText: vi.fn(), deleteEntry: vi.fn(), listTree: vi.fn().mockResolvedValue([]) } };
 });
 
 import { api } from "./api";
@@ -48,6 +48,31 @@ afterEach(() => {
 });
 
 describe("useDocument", () => {
+  it("deleting the open page flushes its pending edit before trashing, and writes nothing after", async () => {
+    const order: string[] = [];
+    writeText.mockImplementation(async () => void order.push("write"));
+    vi.mocked(api.deleteEntry).mockImplementation(async () => {
+      order.push("delete");
+      return { original: PATH, trashed: "/t/Telas.md" };
+    });
+    useApp.setState({ openPath: PATH });
+    const hook = renderHook(() => useDocument(useApp((s) => s.openPath)));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    act(() => hook.result.current.onChange("edición pendiente"));
+    await act(async () => {
+      const p = useApp.getState().deleteEntry(PATH);
+      await vi.advanceTimersByTimeAsync(0);
+      await p;
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000);
+    });
+    expect(order).toEqual(["write", "delete"]);
+    expect(writeText).toHaveBeenCalledWith(PATH, "edición pendiente");
+  });
+
   it("opening_does_not_write", async () => {
     const { result, unmount } = await open();
     expect(result.current.status).toBe("clean");

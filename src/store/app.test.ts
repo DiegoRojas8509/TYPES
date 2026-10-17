@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TreeNode } from "../lib/api";
 
 const fsListeners: Array<(p: { paths: string[] }) => void> = [];
@@ -22,7 +22,7 @@ vi.mock("../lib/api", () => ({
 }));
 
 import { api } from "../lib/api";
-import { initialState, startSync, useApp } from "./app";
+import { UNDO_WINDOW_MS, initialState, startSync, useApp } from "./app";
 
 const tree: TreeNode[] = [
   {
@@ -95,6 +95,17 @@ describe("store", () => {
     expect(useApp.getState().activeSpace).toBeNull();
   });
 
+  it("closes the open file BEFORE trashing it so the editor flushes into the trash", async () => {
+    useApp.getState().open("Ropa/Notas.md");
+    let openAtDelete: string | null | undefined;
+    mocked.deleteEntry.mockImplementation(async () => {
+      openAtDelete = useApp.getState().openPath;
+      return { original: "Ropa/Notas.md", trashed: "/t/Notas.md" };
+    });
+    await useApp.getState().deleteEntry("Ropa/Notas.md");
+    expect(openAtDelete).toBeNull();
+  });
+
   it("deleting an unrelated file keeps the open one", async () => {
     useApp.getState().open("Ropa/Notas.md");
     mocked.deleteEntry.mockResolvedValue({ original: "", trashed: "" });
@@ -141,7 +152,7 @@ describe("store", () => {
     });
 
     it("undoDelete restores, refreshes the tree, announces and clears", async () => {
-      useApp.setState({ lastDeleted: { original: "Ropa/Notas.md", trashed: "/t/Notas.md" } });
+      useApp.setState({ lastDeleted: { original: "Ropa/Notas.md", trashed: "/t/Notas.md" }, lastDeletedAt: Date.now() });
       mocked.restoreEntry.mockResolvedValue("Ropa/Notas.md");
       await useApp.getState().undoDelete();
       expect(mocked.restoreEntry).toHaveBeenCalledWith("Ropa/Notas.md", "/t/Notas.md");
@@ -152,11 +163,67 @@ describe("store", () => {
 
     it("undoDelete shows the error and keeps lastDeleted when it fails", async () => {
       const last = { original: "Ropa/Notas.md", trashed: "/t/Notas.md" };
-      useApp.setState({ lastDeleted: last });
+      useApp.setState({ lastDeleted: last, lastDeletedAt: Date.now() });
       mocked.restoreEntry.mockRejectedValue({ kind: "exists", message: "Ya existe «Notas.md»; no la sobrescribo." });
       await useApp.getState().undoDelete();
       expect(useApp.getState().notice?.message).toBe("Ya existe «Notas.md»; no la sobrescribo.");
       expect(useApp.getState().lastDeleted).toEqual(last);
+    });
+
+    it("two rapid undoDelete calls restore only once", async () => {
+      useApp.setState({ lastDeleted: { original: "Ropa/Notas.md", trashed: "/t/Notas.md" }, lastDeletedAt: Date.now() });
+      mocked.restoreEntry.mockResolvedValue("Ropa/Notas.md");
+      await Promise.all([useApp.getState().undoDelete(), useApp.getState().undoDelete()]);
+      expect(mocked.restoreEntry).toHaveBeenCalledTimes(1);
+      expect(useApp.getState().notice?.tone).toBe("info");
+    });
+
+    it("a delete made while a restore is in flight keeps its own undo", async () => {
+      useApp.setState({ lastDeleted: { original: "Ropa/Notas.md", trashed: "/t/Notas.md" }, lastDeletedAt: Date.now() });
+      let finish!: (v: string) => void;
+      mocked.restoreEntry.mockReturnValue(new Promise<string>((r) => (finish = r)));
+      const undo = useApp.getState().undoDelete();
+      mocked.deleteEntry.mockResolvedValue({ original: "Ropa/Otra.md", trashed: "/t/Otra.md" });
+      await useApp.getState().deleteEntry("Ropa/Otra.md");
+      finish("Ropa/Notas.md");
+      await undo;
+      expect(useApp.getState().lastDeleted).toEqual({ original: "Ropa/Otra.md", trashed: "/t/Otra.md" });
+    });
+
+    it("a failed restore does not clobber a newer delete", async () => {
+      useApp.setState({ lastDeleted: { original: "Ropa/Notas.md", trashed: "/t/Notas.md" }, lastDeletedAt: Date.now() });
+      let fail!: (e: unknown) => void;
+      mocked.restoreEntry.mockReturnValue(new Promise<string>((_, r) => (fail = r)));
+      const undo = useApp.getState().undoDelete();
+      mocked.deleteEntry.mockResolvedValue({ original: "Ropa/Otra.md", trashed: "/t/Otra.md" });
+      await useApp.getState().deleteEntry("Ropa/Otra.md");
+      fail({ message: "x" });
+      await undo;
+      expect(useApp.getState().lastDeleted?.original).toBe("Ropa/Otra.md");
+    });
+
+    describe("expiry", () => {
+      beforeEach(() => vi.useFakeTimers());
+      afterEach(() => vi.useRealTimers());
+
+      it("still restores inside the window", async () => {
+        mocked.deleteEntry.mockResolvedValue({ original: "Ropa/Notas.md", trashed: "/t/Notas.md" });
+        await useApp.getState().deleteEntry("Ropa/Notas.md");
+        vi.advanceTimersByTime(UNDO_WINDOW_MS - 1);
+        mocked.restoreEntry.mockResolvedValue("Ropa/Notas.md");
+        await useApp.getState().undoDelete();
+        expect(mocked.restoreEntry).toHaveBeenCalledTimes(1);
+      });
+
+      it("after the window clears silently and restores nothing", async () => {
+        mocked.deleteEntry.mockResolvedValue({ original: "Ropa/Notas.md", trashed: "/t/Notas.md" });
+        await useApp.getState().deleteEntry("Ropa/Notas.md");
+        vi.advanceTimersByTime(UNDO_WINDOW_MS + 1);
+        await useApp.getState().undoDelete();
+        expect(mocked.restoreEntry).not.toHaveBeenCalled();
+        expect(useApp.getState().lastDeleted).toBeNull();
+        expect(useApp.getState().notice).toBeNull();
+      });
     });
 
     it("undoDelete without anything to undo does nothing", async () => {

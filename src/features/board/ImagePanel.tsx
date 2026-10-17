@@ -2,6 +2,7 @@ import "./imagePanel.css";
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from "react";
 import { createPortal } from "react-dom";
 import { api, assetUrl, errorMessage } from "../../lib/api";
+import { useImageUrl } from "./useImageUrl";
 import { TREE_PATH_MIME, absolutePath, baseName, parentOf } from "../../lib/paths";
 import { useApp } from "../../store/app";
 import type { TreeNode } from "../../lib/api";
@@ -205,8 +206,7 @@ function Thumb({
   onDelete(): void;
 }) {
   const name = baseName(rel);
-  const [failed, setFailed] = useState(false);
-  useEffect(() => setFailed(false), [src]);
+  const { src: shownSrc, failed, setFailed } = useImageUrl(rel, src);
 
   const onDragStart = (e: DragEvent) => {
     e.dataTransfer.setData(TREE_PATH_MIME, rel);
@@ -219,7 +219,7 @@ function Thumb({
         {failed ? (
           <span className="image-thumb-missing" aria-hidden="true" />
         ) : (
-          <img src={src} alt="" loading="lazy" draggable={false} onError={() => setFailed(true)} />
+          <img src={shownSrc} alt="" loading="lazy" draggable={false} onError={() => setFailed(true)} />
         )}
         {deletable && (
           <button type="button" className="image-del" aria-label={`Mandar «${name}» a la papelera`} onClick={onDelete}>
