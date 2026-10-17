@@ -1,5 +1,6 @@
 import "./imagePanel.css";
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from "react";
+import { createPortal } from "react-dom";
 import { api, assetUrl, errorMessage } from "../../lib/api";
 import { TREE_PATH_MIME, absolutePath, baseName, parentOf } from "../../lib/paths";
 import { useApp } from "../../store/app";
@@ -30,11 +31,14 @@ export function ImagePanel({
   path,
   editable,
   nodes,
+  host,
 }: {
   path: string;
   editable: boolean;
   /** The board's live nodes (only `type` and `file` are read). */
   nodes: { type?: string; file?: unknown }[];
+  /** Element the panel is rendered into (the board's flow area, below the toolbar). Inline when omitted. */
+  host?: HTMLElement | null;
 }) {
   const folder = parentOf(path);
   const root = useApp((s) => s.settings?.workspaceRoot ?? "");
@@ -55,6 +59,9 @@ export function ImagePanel({
     const t = setTimeout(() => setTick((n) => n + 1), REFRESH_MS);
     return () => clearTimeout(t);
   }, [open, fsSeq]);
+
+  // A different folder means a different list: drop the old one so its thumbnails never flash.
+  useEffect(() => setAll(null), [folder]);
 
   useEffect(() => {
     if (!open || !folder) return;
@@ -112,6 +119,59 @@ export function ImagePanel({
   const empty =
     tab === "board" ? "Esta pizarra aún no tiene imágenes." : all === null ? "" : "Suelta o sube imágenes para empezar.";
 
+  const panel = open && inFolder ? (
+    <aside className="image-panel" aria-label={label}>
+      <div className="image-panel-head">
+        <div className="image-tabs" role="tablist">
+          {(["board", "all"] as const).map((t) => (
+            <button
+              key={t}
+              type="button"
+              role="tab"
+              aria-selected={tab === t}
+              className="image-tab"
+              onClick={() => setTab(t)}
+            >
+              {t === "board" ? "En esta pizarra" : "Todas"}
+            </button>
+          ))}
+        </div>
+        {editable && (
+          <>
+            <button type="button" className="btn image-upload" onClick={() => input.current?.click()}>
+              + Subir
+            </button>
+            <input
+              ref={input}
+              type="file"
+              accept="image/*"
+              multiple
+              hidden
+              aria-label="Subir imágenes"
+              onChange={(e) => void upload(e)}
+            />
+          </>
+        )}
+      </div>
+      {shown.length === 0 ? (
+        <p className="image-empty">{empty}</p>
+      ) : (
+        <ul className="image-grid" role="list">
+          {shown.map((rel) => (
+            <Thumb
+              key={rel}
+              rel={rel}
+              src={assetUrl(absolutePath(root, rel))}
+              draggable={editable}
+              deletable={editable && tab === "all"}
+              onDelete={() => void askDelete(rel)}
+            />
+          ))}
+        </ul>
+      )}
+    </aside>
+  ) : null;
+
   return (
     <>
       <button
@@ -125,58 +185,7 @@ export function ImagePanel({
       >
         <Icon />
       </button>
-      {open && inFolder && (
-        <aside className="image-panel" aria-label={label}>
-          <div className="image-panel-head">
-            <div className="image-tabs" role="tablist">
-              {(["board", "all"] as const).map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  role="tab"
-                  aria-selected={tab === t}
-                  className="image-tab"
-                  onClick={() => setTab(t)}
-                >
-                  {t === "board" ? "En esta pizarra" : "Todas"}
-                </button>
-              ))}
-            </div>
-            {editable && (
-              <>
-                <button type="button" className="btn image-upload" onClick={() => input.current?.click()}>
-                  + Subir
-                </button>
-                <input
-                  ref={input}
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  hidden
-                  aria-label="Subir imágenes"
-                  onChange={(e) => void upload(e)}
-                />
-              </>
-            )}
-          </div>
-          {shown.length === 0 ? (
-            <p className="image-empty">{empty}</p>
-          ) : (
-            <ul className="image-grid" role="list">
-              {shown.map((rel) => (
-                <Thumb
-                  key={rel}
-                  rel={rel}
-                  src={assetUrl(absolutePath(root, rel))}
-                  draggable={editable}
-                  deletable={editable && tab === "all"}
-                  onDelete={() => void askDelete(rel)}
-                />
-              ))}
-            </ul>
-          )}
-        </aside>
-      )}
+      {host ? panel && createPortal(panel, host) : panel}
       {asking && <ConfirmTrash image={asking.image} count={asking.count} onCancel={() => setAsking(null)} onConfirm={confirmDelete} />}
     </>
   );

@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { TreeNode } from "../../lib/api";
 import { countClaudeFiles, getShowClaudeFiles, setShowClaudeFiles, withoutClaudeFiles } from "../../lib/claudeFiles";
 import { useApp } from "../../store/app";
-import { IconCode, IconPlus } from "../shell/icons";
+import { IconCode, IconPlus, IconSidebar } from "../shell/icons";
 import { ConfirmDelete } from "./ConfirmDelete";
 import { NameInput } from "./NameInput";
 import { displayName, TreeItem, type Editing } from "./TreeItem";
@@ -13,6 +13,7 @@ export function Sidebar() {
   const expanded = useApp((s) => s.expanded);
   const openPath = useApp((s) => s.openPath);
   const activeSpace = useApp((s) => s.activeSpace);
+  const toggleSidebar = useApp((s) => s.toggleSidebar);
   const app = useApp.getState;
 
   const [editing, setEditing] = useState<Editing | null>(null);
@@ -126,6 +127,9 @@ export function Sidebar() {
           )}
           <button className="icon-btn" aria-label="Nuevo espacio" title="Nuevo espacio" onClick={() => setEditing({ kind: "create-space" })}>
             <IconPlus />
+          </button>
+          <button className="icon-btn" aria-label="Ocultar barra lateral" title="Ocultar barra lateral (⌘\)" onClick={toggleSidebar}>
+            <IconSidebar />
           </button>
         </span>
       </div>

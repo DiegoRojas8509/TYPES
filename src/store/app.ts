@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { api, errorMessage, onFsChanged, type DeletedEntry, type Settings, type TreeNode } from "../lib/api";
+import { readSidebarCollapsed, writeSidebarCollapsed } from "../lib/sidebarPref";
 import { isWithin, replacePrefix, spaceOf, titleOf } from "../lib/paths";
 
 export interface Notice {
@@ -25,6 +26,7 @@ export interface AppState {
   /** Folder paths that are expanded in the sidebar. */
   expanded: Record<string, boolean>;
   chatCollapsed: boolean;
+  sidebarCollapsed: boolean;
   /** Last `fs-changed` event; editor and viewers watch this to reload. */
   fsChange: FsChange | null;
   notice: Notice | null;
@@ -38,6 +40,7 @@ export interface AppState {
   setExpanded(path: string, value: boolean): void;
   toggleExpanded(path: string): void;
   toggleChat(): void;
+  toggleSidebar(): void;
   notify(message: string, tone?: Notice["tone"]): void;
   dismissNotice(): void;
 
@@ -61,6 +64,7 @@ export function initialState() {
     activeSpace: null,
     expanded: {},
     chatCollapsed: false,
+    sidebarCollapsed: false,
     fsChange: null,
     notice: null,
     lastDeleted: null,
@@ -84,6 +88,7 @@ export const useApp = create<AppState>()((set, get) => {
 
   return {
     ...initialState(),
+    sidebarCollapsed: readSidebarCollapsed(),
 
     async init() {
       const settings = await attempt(() => api.getSettings());
@@ -128,6 +133,12 @@ export const useApp = create<AppState>()((set, get) => {
 
     toggleChat() {
       set((s) => ({ chatCollapsed: !s.chatCollapsed }));
+    },
+
+    toggleSidebar() {
+      const next = !get().sidebarCollapsed;
+      set({ sidebarCollapsed: next });
+      writeSidebarCollapsed(next);
     },
 
     notify(message, tone = "error") {

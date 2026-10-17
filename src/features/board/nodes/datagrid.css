@@ -112,13 +112,13 @@
   display: grid;
   place-content: center;
   width: 18px;
-  height: 18px;
+  height: 20px;
   padding: 0;
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-faint);
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1;
   cursor: pointer;
   opacity: 0;

@@ -249,4 +249,36 @@ describe("ImagePanel", () => {
     expect(vi.mocked(api.listImages).mock.calls.length).toBeGreaterThan(before);
     expect(screen.getAllByRole("listitem")).toHaveLength(3);
   });
+
+  it("renders the panel inside the host element instead of the toolbar", async () => {
+    const host = document.createElement("div");
+    host.className = "board-flow";
+    document.body.appendChild(host);
+    await mount({ host });
+    await openPanel();
+    const panel = screen.getByRole("complementary", { name: "Imágenes" });
+    expect(host.contains(panel)).toBe(true);
+    host.remove();
+  });
+
+  it("clears the «Todas» list when the board moves to another folder", async () => {
+    const { rerender } = render(<ImagePanel path={BOARD} editable nodes={FILES} />);
+    await flush();
+    await openPanel();
+    await act(async () => {
+      screen.getByRole("tab", { name: "Todas" }).click();
+    });
+    await flush();
+    const panel = () => screen.getByRole("complementary", { name: "Imágenes" });
+    expect(within(panel()).getAllByRole("listitem")).toHaveLength(2);
+
+    let release: (v: string[]) => void = () => {};
+    vi.mocked(api.listImages).mockReturnValue(new Promise<string[]>((r) => (release = r)));
+    rerender(<ImagePanel path="Otra/Plan.canvas" editable nodes={FILES} />);
+    await flush();
+    expect(within(panel()).queryAllByRole("listitem")).toHaveLength(0);
+
+    await act(async () => release(["Otra/Imágenes/z.png"]));
+    expect(within(panel()).getAllByRole("listitem")).toHaveLength(1);
+  });
 });

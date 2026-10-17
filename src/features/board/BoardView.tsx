@@ -71,7 +71,7 @@ function Board({ path }: { path: string }) {
   const rf = useReactFlow<FlowNode, FlowEdge>();
 
   const rootRef = useRef<HTMLDivElement>(null);
-  const flowRef = useRef<HTMLDivElement>(null);
+  const [flowEl, setFlowEl] = useState<HTMLDivElement | null>(null);
   const docRef = useRef(doc);
   docRef.current = doc;
   // Live copy of `editable`, set during render with the parse result. Anything
@@ -192,9 +192,9 @@ function Board({ path }: { path: string }) {
 
   /** Centre of the visible board, in flow coordinates. */
   const viewportCentre = useCallback(() => {
-    const r = flowRef.current?.getBoundingClientRect();
+    const r = flowEl?.getBoundingClientRect();
     return rf.screenToFlowPosition({ x: (r?.left ?? 0) + (r?.width ?? 0) / 2, y: (r?.top ?? 0) + (r?.height ?? 0) / 2 });
-  }, [rf]);
+  }, [rf, flowEl]);
 
   function openMenuAt(clientX: number, clientY: number) {
     const root = rootRef.current?.getBoundingClientRect();
@@ -249,7 +249,7 @@ function Board({ path }: { path: string }) {
             </span>
           )}
           <OrderButton path={path} editable={editable} />
-          <ImagePanel path={path} editable={editable} nodes={fileNodes} />
+          <ImagePanel path={path} editable={editable} nodes={fileNodes} host={flowEl} />
           {editable && (
             <button
               type="button"
@@ -290,7 +290,7 @@ function Board({ path }: { path: string }) {
         <div className="pane-body board-loading" aria-busy={doc.content === null} />
       ) : (
         <BoardActionsContext.Provider value={actions}>
-          <div className="board-flow" ref={flowRef} onDragOver={onDragOver} onDrop={onDrop}>
+          <div className="board-flow" ref={setFlowEl} onDragOver={onDragOver} onDrop={onDrop}>
             <ReactFlow<FlowNode, FlowEdge>
               nodes={nodes}
               edges={shown}

@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { ChatPanel } from "./features/chat/ChatPanel";
 import { DocumentPane } from "./features/shell/DocumentPane";
-import { IconPanel } from "./features/shell/icons";
+import { IconPanel, IconSidebar } from "./features/shell/icons";
 import { Notice } from "./features/shell/Notice";
 import { ResizeHandle } from "./features/shell/ResizeHandle";
+import { useSidebarShortcut } from "./features/shell/useSidebarShortcut";
 import { useUndoShortcut } from "./features/shell/useUndoShortcut";
 import { Sidebar } from "./features/sidebar/Sidebar";
 import { startSync, useApp } from "./store/app";
@@ -37,10 +38,13 @@ function usePaneWidth(key: string, fallback: number, limits: readonly [number, n
 function App() {
   const chatCollapsed = useApp((s) => s.chatCollapsed);
   const toggleChat = useApp((s) => s.toggleChat);
-  const [sidebarW, setSidebarW] = usePaneWidth("types.sidebarWidth", 260, LIMITS.sidebar);
-  const [chatW, setChatW] = usePaneWidth("types.chatWidth", 380, LIMITS.chat);
+  const sidebarCollapsed = useApp((s) => s.sidebarCollapsed);
+  const toggleSidebar = useApp((s) => s.toggleSidebar);
+  const [sidebarW, setSidebarW] = usePaneWidth("types.sidebarWidth", 290, LIMITS.sidebar);
+  const [chatW, setChatW] = usePaneWidth("types.chatWidth", 420, LIMITS.chat);
 
   useUndoShortcut();
+  useSidebarShortcut();
 
   useEffect(() => {
     void useApp.getState().init();
@@ -52,10 +56,25 @@ function App() {
 
   return (
     <div className="app">
-      <aside className="pane pane-sidebar" style={{ width: sidebarW }}>
-        <Sidebar />
-      </aside>
-      <ResizeHandle label="Ancho de la barra lateral" direction={1} width={sidebarW} onResize={setSidebarW} />
+      {sidebarCollapsed ? (
+        <div className="sidebar-rail">
+          <button
+            className="icon-btn"
+            aria-label="Mostrar barra lateral"
+            title="Mostrar barra lateral (⌘\)"
+            onClick={toggleSidebar}
+          >
+            <IconSidebar />
+          </button>
+        </div>
+      ) : (
+        <>
+          <aside className="pane pane-sidebar" style={{ width: sidebarW }}>
+            <Sidebar />
+          </aside>
+          <ResizeHandle label="Ancho de la barra lateral" direction={1} width={sidebarW} onResize={setSidebarW} />
+        </>
+      )}
 
       <main className="pane pane-doc">
         <DocumentPane />

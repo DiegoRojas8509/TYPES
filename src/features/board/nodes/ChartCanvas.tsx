@@ -9,7 +9,7 @@ import type { PreparedChart } from "./chartData";
 import { ChartTooltip } from "./ChartTooltip";
 
 const compact = new Intl.NumberFormat("es-MX", { notation: "compact", maximumFractionDigits: 1 });
-const tick = { fill: "var(--text-muted)", fontSize: 11 };
+const tick = { fill: "var(--text-muted)", fontSize: 12.5 };
 const margin = { top: 8, right: 8, bottom: 0, left: 0 };
 
 const labelAt = (labels: string[], idx: unknown): string | undefined => (typeof idx === "number" ? labels[idx] : undefined);

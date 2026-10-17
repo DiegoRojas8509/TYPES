@@ -70,6 +70,18 @@ describe("BoardView (mounted under jsdom)", () => {
     expect(api.writeText).not.toHaveBeenCalled();
   });
 
+  it("renders the image panel inside the flow area, below the toolbar", async () => {
+    const { container, unmount } = await open(EMPTY);
+    await act(async () => {
+      screen.getByRole("button", { name: "Imágenes" }).click();
+    });
+    await settle();
+    const panel = screen.getByRole("complementary", { name: "Imágenes" });
+    expect(container.querySelector(".board-flow")?.contains(panel)).toBe(true);
+    expect(container.querySelector(".pane-header")?.contains(panel)).toBe(false);
+    unmount();
+  });
+
   it("a valid empty board shows the empty state and opening it never writes", async () => {
     const { unmount } = await open(EMPTY);
     expect(screen.getByText(/Doble clic para agregar un bloque/)).toBeInTheDocument();

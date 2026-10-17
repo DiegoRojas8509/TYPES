@@ -78,6 +78,12 @@ export const IconPanel = () => (
     <path d="M10 3v10" />
   </Svg>
 );
+export const IconSidebar = () => (
+  <Svg>
+    <rect x="2" y="3" width="12" height="10" rx="1" />
+    <path d="M6 3v10" />
+  </Svg>
+);
 export const IconClose = () => (
   <Svg>
     <path d="m4 4 8 8M12 4l-8 8" />

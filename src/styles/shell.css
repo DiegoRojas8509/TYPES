@@ -30,7 +30,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 38px;
+  height: var(--header-h);
   padding: 0 var(--space-3) 0 var(--space-4);
   border-bottom: 1px solid var(--border);
   font-weight: 600;
@@ -49,6 +49,27 @@
   justify-content: center;
   padding-top: var(--space-3);
   border-left: 1px solid var(--border);
+}
+
+.sidebar-rail {
+  flex: none;
+  width: 34px;
+  display: flex;
+  justify-content: center;
+  padding-top: var(--space-3);
+  background: var(--bg-side);
+  border-right: 1px solid var(--border);
+}
+
+/* The sidebar fades/slides in when reopened; the global reduced-motion rule removes it. */
+.pane-sidebar {
+  animation: sidebar-in 140ms ease-out;
+}
+@keyframes sidebar-in {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
 }
 
 .resize-handle {
