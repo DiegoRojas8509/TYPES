@@ -1,5 +1,5 @@
 // Decides what dropping an image from the sidebar tree onto a board means.
-import { kindOf, spaceOf } from "../../lib/paths";
+import { IMAGES_DIR, kindOf, parentOf, spaceOf } from "../../lib/paths";
 import { relativeSrc } from "../../lib/markdown";
 
 export type TreeDropPlan =
@@ -12,10 +12,15 @@ export function plainRelative(boardPath: string, target: string): string {
   return relativeSrc(boardPath, target).replace(/%20/g, " ").replace(/%28/g, "(").replace(/%29/g, ")");
 }
 
+/**
+ * Images live in `<folder>/Imágenes/`. Dropping one that is already in the board folder's own
+ * `Imágenes/` links it; anything else is copied into the board's folder (Rust adds `Imágenes/`).
+ */
 export function planTreeDrop(boardPath: string, dragged: string): TreeDropPlan {
   if (kindOf(dragged) !== "image") return { kind: "reject", reason: "not-image" };
-  const space = spaceOf(boardPath);
-  if (!boardPath.includes("/") || !space) return { kind: "reject", reason: "no-space" };
-  if (spaceOf(dragged) === space) return { kind: "link", file: plainRelative(boardPath, dragged) };
-  return { kind: "copy", destDir: `${space}/adjuntos` };
+  const folder = parentOf(boardPath);
+  if (!folder || !spaceOf(boardPath)) return { kind: "reject", reason: "no-space" };
+  const own = `${folder}/${IMAGES_DIR}`.normalize("NFC");
+  if (parentOf(dragged).normalize("NFC") === own) return { kind: "link", file: plainRelative(boardPath, dragged) };
+  return { kind: "copy", destDir: folder };
 }

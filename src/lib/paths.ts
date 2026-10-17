@@ -5,6 +5,14 @@ export type FileKind = "markdown" | "canvas" | "html" | "image" | "other";
 /** dataTransfer type the sidebar sets when dragging an image row (value: workspace-relative path). */
 export const TREE_PATH_MIME = "application/x-types-path";
 
+/** Name of the per-folder image store (NFC). Must match `IMAGES_DIR` in Rust. */
+export const IMAGES_DIR = "Imágenes";
+
+/** True when `segment` is the image folder name; Finder may hand us NFD, so compare normalized. */
+export function isImagesSegment(segment: string): boolean {
+  return segment.normalize("NFC") === IMAGES_DIR;
+}
+
 const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "avif", "bmp"]);
 
 export function baseName(path: string): string {

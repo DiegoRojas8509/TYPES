@@ -1,6 +1,6 @@
 import { create } from "zustand";
-import { api, errorMessage, onFsChanged, type Settings, type TreeNode } from "../lib/api";
-import { isWithin, replacePrefix, spaceOf } from "../lib/paths";
+import { api, errorMessage, onFsChanged, type DeletedEntry, type Settings, type TreeNode } from "../lib/api";
+import { isWithin, replacePrefix, spaceOf, titleOf } from "../lib/paths";
 
 export interface Notice {
   id: number;
@@ -28,6 +28,8 @@ export interface AppState {
   /** Last `fs-changed` event; editor and viewers watch this to reload. */
   fsChange: FsChange | null;
   notice: Notice | null;
+  /** The last delete that can be undone (null when none, or when its trash location is unknown). */
+  lastDeleted: DeletedEntry | null;
 
   init(): Promise<void>;
   refreshTree(): Promise<void>;
@@ -46,6 +48,8 @@ export interface AppState {
   createFolder(dir: string, name: string): Promise<string | null>;
   renameEntry(path: string, newName: string): Promise<string | null>;
   deleteEntry(path: string): Promise<boolean>;
+  /** Restores `lastDeleted`. Cleared on success; kept on failure so Diego can retry (e.g. after freeing the name). */
+  undoDelete(): Promise<void>;
 }
 
 export function initialState() {
@@ -59,6 +63,7 @@ export function initialState() {
     chatCollapsed: false,
     fsChange: null,
     notice: null,
+    lastDeleted: null,
   } satisfies Partial<AppState>;
 }
 
@@ -185,14 +190,12 @@ export const useApp = create<AppState>()((set, get) => {
     },
 
     async deleteEntry(path) {
-      const done = await attempt(async () => {
-        await api.deleteEntry(path);
-        return true;
-      });
-      if (!done) return false;
+      const deleted = await attempt(() => api.deleteEntry(path));
+      if (!deleted) return false;
       set((s) => {
         const expanded = Object.fromEntries(Object.entries(s.expanded).filter(([k]) => !isWithin(k, path)));
         return {
+          lastDeleted: deleted.trashed ? deleted : null,
           expanded,
           openPath: s.openPath !== null && isWithin(s.openPath, path) ? null : s.openPath,
           activeSpace: s.activeSpace !== null && isWithin(s.activeSpace, path) ? null : s.activeSpace,
@@ -200,6 +203,16 @@ export const useApp = create<AppState>()((set, get) => {
       });
       await get().refreshTree();
       return true;
+    },
+
+    async undoDelete() {
+      const last = get().lastDeleted;
+      if (!last) return;
+      const restored = await attempt(() => api.restoreEntry(last.original, last.trashed));
+      if (restored === undefined) return;
+      set({ lastDeleted: null });
+      await get().refreshTree();
+      get().notify(`Se restauró «${titleOf(restored)}»`, "info");
     },
   };
 });

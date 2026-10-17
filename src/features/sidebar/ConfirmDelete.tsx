@@ -27,7 +27,7 @@ export function ConfirmDelete({ name, isDir, onConfirm, onCancel }: Props) {
         <h2 id="confirm-delete-title">
           {isDir ? "¿Eliminar la carpeta" : "¿Eliminar"} «{name}»?
         </h2>
-        <p>Se moverá a la papelera. {isDir ? "Incluye todo lo que contiene." : "Podrás recuperarla desde ahí."}</p>
+        <p>Se moverá a la papelera. {isDir ? "Incluye todo lo que contiene." : "Podrás recuperarla desde ahí."} Puedes deshacerlo con ⌘Z.</p>
         <div className="dialog-actions">
           <button className="btn" onClick={onCancel}>
             Cancelar

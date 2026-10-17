@@ -109,11 +109,11 @@ export function Sidebar() {
           {hiddenClaude > 0 && (
             <button
               className="icon-btn"
-              aria-label={showClaude ? "Ocultar archivos de contexto" : "Mostrar archivos de contexto"}
+              aria-label={showClaude ? "Ocultar archivos de contexto e imágenes" : "Mostrar archivos de contexto e imágenes"}
               title={
                 showClaude
-                  ? "Ocultar los CLAUDE.md"
-                  : "Mostrar los CLAUDE.md (el contexto que lee Claude; sigue activo aunque no se vean)"
+                  ? "Ocultar los CLAUDE.md y las carpetas Imágenes"
+                  : "Mostrar los CLAUDE.md y las carpetas Imágenes (siguen activos aunque no se vean)"
               }
               aria-pressed={showClaude}
               onClick={() => {

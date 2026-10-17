@@ -5,7 +5,7 @@ vi.mock("../../lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../lib/api")>();
   return {
     ...actual,
-    api: { ...actual.api, readText: vi.fn(), writeText: vi.fn(), saveAttachment: vi.fn(), importFiles: vi.fn() },
+    api: { ...actual.api, readText: vi.fn(), writeText: vi.fn(), saveImage: vi.fn(), importFiles: vi.fn() },
     assetUrl: (p: string) => `asset://localhost/${encodeURIComponent(p)}`,
   };
 });
@@ -55,7 +55,7 @@ beforeEach(() => {
   useApp.setState({ ...initialState(), settings: { workspaceRoot: "/Users/d/TYPES-espacios", claudePath: null } });
   vi.mocked(api.readText).mockReset().mockImplementation(async () => disk);
   vi.mocked(api.writeText).mockReset().mockResolvedValue(undefined);
-  vi.mocked(api.saveAttachment).mockReset();
+  vi.mocked(api.saveImage).mockReset();
   vi.mocked(api.importFiles).mockReset();
 });
 afterEach(() => vi.useRealTimers());
@@ -192,8 +192,8 @@ describe("BoardView (mounted under jsdom)", () => {
     expect(parsed.ok && [parsed.doc.nodes.length, parsed.doc.edges.length]).toEqual([1, 1]);
   });
 
-  it("pasting an image saves it as an attachment and adds a file node with a relative path", async () => {
-    vi.mocked(api.saveAttachment).mockResolvedValue("Ropa/adjuntos/foto 1.png");
+  it("pasting an image saves it in the board folder's Imágenes and adds a file node with a relative path", async () => {
+    vi.mocked(api.saveImage).mockResolvedValue("Ropa/Imágenes/foto 1.png");
     await open(EMPTY);
     const file = new File([new Uint8Array([1, 2, 3])], "foto 1.png", { type: "image/png" });
     await act(async () => {
@@ -202,10 +202,29 @@ describe("BoardView (mounted under jsdom)", () => {
       document.body.dispatchEvent(ev);
       await vi.advanceTimersByTimeAsync(0);
     });
-    expect(api.saveAttachment).toHaveBeenCalledWith("Ropa", "foto 1.png", expect.any(Uint8Array));
+    expect(api.saveImage).toHaveBeenCalledWith("Ropa", "foto 1.png", expect.any(Uint8Array));
     await wait(AUTOSAVE_MS);
     const parsed = parseCanvas(vi.mocked(api.writeText).mock.calls[0][1]);
-    expect(parsed.ok && parsed.doc.nodes).toMatchObject([{ type: "file", file: "adjuntos/foto 1.png", width: 300, height: 220 }]);
+    expect(parsed.ok && parsed.doc.nodes).toMatchObject([{ type: "file", file: "Imágenes/foto 1.png", width: 300, height: 220 }]);
+  });
+
+  it("a board in a subfolder saves pasted images in that subfolder's Imágenes", async () => {
+    vi.mocked(api.saveImage).mockResolvedValue("Ropa/Maquila/Imágenes/p.png");
+    disk = EMPTY;
+    render(<BoardView path="Ropa/Maquila/Plan.canvas" />);
+    await settle();
+    await act(async () => {
+      const ev = new Event("paste", { bubbles: true, cancelable: true });
+      Object.defineProperty(ev, "clipboardData", {
+        value: { files: [new File([new Uint8Array([1])], "p.png", { type: "image/png" })] },
+      });
+      document.body.dispatchEvent(ev);
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(api.saveImage).toHaveBeenCalledWith("Ropa/Maquila", "p.png", expect.any(Uint8Array));
+    await wait(AUTOSAVE_MS);
+    const parsed = parseCanvas(vi.mocked(api.writeText).mock.calls[0][1]);
+    expect(parsed.ok && parsed.doc.nodes).toMatchObject([{ type: "file", file: "Imágenes/p.png" }]);
   });
 
   it("an invalid board ignores pasted images", async () => {
@@ -218,12 +237,12 @@ describe("BoardView (mounted under jsdom)", () => {
       document.body.dispatchEvent(ev);
       await vi.advanceTimersByTimeAsync(0);
     });
-    expect(api.saveAttachment).not.toHaveBeenCalled();
+    expect(api.saveImage).not.toHaveBeenCalled();
   });
 
   it("an image save that resolves after the board became unreadable never overwrites it", async () => {
     let resolveSave!: (p: string) => void;
-    vi.mocked(api.saveAttachment).mockReturnValue(new Promise<string>((r) => (resolveSave = r)));
+    vi.mocked(api.saveImage).mockReturnValue(new Promise<string>((r) => (resolveSave = r)));
     await open(EMPTY);
     await act(async () => {
       const ev = new Event("paste", { bubbles: true, cancelable: true });
@@ -233,7 +252,7 @@ describe("BoardView (mounted under jsdom)", () => {
       document.body.dispatchEvent(ev);
       await vi.advanceTimersByTimeAsync(0);
     });
-    expect(api.saveAttachment).toHaveBeenCalledTimes(1);
+    expect(api.saveImage).toHaveBeenCalledTimes(1);
     // Claude breaks the file while the attachment is still being saved.
     disk = "{ roto";
     await act(async () => {
@@ -242,7 +261,7 @@ describe("BoardView (mounted under jsdom)", () => {
     });
     expect(screen.getByRole("alert")).toHaveTextContent("Esta pizarra no se puede abrir:");
     await act(async () => {
-      resolveSave("Ropa/adjuntos/a.png");
+      resolveSave("Ropa/Imágenes/a.png");
       await vi.advanceTimersByTimeAsync(0);
     });
     await wait(AUTOSAVE_MS * 5);
@@ -267,30 +286,30 @@ async function dropFromTree(dragged: string) {
 }
 
 describe("dragging images from the sidebar", () => {
-  it("links an image of the same space without copying it", async () => {
+  it("links an image already in the board folder's Imágenes without copying it", async () => {
     await open(EMPTY);
-    await dropFromTree("Ropa/adjuntos/codigo.png");
+    await dropFromTree("Ropa/Imágenes/codigo.png");
     await wait(AUTOSAVE_MS);
     const parsed = parseCanvas(vi.mocked(api.writeText).mock.calls[0][1]);
-    expect(parsed.ok && parsed.doc.nodes).toMatchObject([{ type: "file", file: "adjuntos/codigo.png" }]);
-    expect(api.saveAttachment).not.toHaveBeenCalled();
+    expect(parsed.ok && parsed.doc.nodes).toMatchObject([{ type: "file", file: "Imágenes/codigo.png" }]);
+    expect(api.saveImage).not.toHaveBeenCalled();
     expect(api.importFiles).not.toHaveBeenCalled();
   });
 
   it("copies an image of another space into this one and points at the copy", async () => {
-    vi.mocked(api.importFiles).mockResolvedValue(["Ropa/adjuntos/a.png"]);
+    vi.mocked(api.importFiles).mockResolvedValue(["Ropa/Imágenes/a.png"]);
     await open(EMPTY);
-    await dropFromTree("Otro/adjuntos/a.png");
-    expect(api.importFiles).toHaveBeenCalledWith("Ropa/adjuntos", ["/Users/d/TYPES-espacios/Otro/adjuntos/a.png"]);
+    await dropFromTree("Otro/Imágenes/a.png");
+    expect(api.importFiles).toHaveBeenCalledWith("Ropa", ["/Users/d/TYPES-espacios/Otro/Imágenes/a.png"]);
     await wait(AUTOSAVE_MS);
     const parsed = parseCanvas(vi.mocked(api.writeText).mock.calls[0][1]);
-    expect(parsed.ok && parsed.doc.nodes).toMatchObject([{ type: "file", file: "adjuntos/a.png" }]);
+    expect(parsed.ok && parsed.doc.nodes).toMatchObject([{ type: "file", file: "Imágenes/a.png" }]);
   });
 
   it("reports a failed copy and adds nothing", async () => {
     vi.mocked(api.importFiles).mockRejectedValue({ message: "boom" });
     await open(EMPTY);
-    await dropFromTree("Otro/adjuntos/a.png");
+    await dropFromTree("Otro/Imágenes/a.png");
     await wait(AUTOSAVE_MS * 5);
     expect(api.writeText).not.toHaveBeenCalled();
     expect(useApp.getState().notice?.message).toMatch(/No se pudo traer la imagen/);

@@ -54,10 +54,10 @@ describe("Sidebar", () => {
     expect(screen.getByText("Notas")).toBeInTheDocument();
     expect(screen.queryByText("CLAUDE")).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByLabelText("Mostrar archivos de contexto"));
+    fireEvent.click(screen.getByLabelText("Mostrar archivos de contexto e imágenes"));
     expect(screen.getAllByText("CLAUDE")).toHaveLength(2);
 
-    fireEvent.click(screen.getByLabelText("Ocultar archivos de contexto"));
+    fireEvent.click(screen.getByLabelText("Ocultar archivos de contexto e imágenes"));
     expect(screen.queryByText("CLAUDE")).not.toBeInTheDocument();
     localStorage.removeItem("types.showClaudeFiles");
   });
@@ -65,7 +65,7 @@ describe("Sidebar", () => {
   it("offers no toggle when there is no CLAUDE.md to hide", () => {
     useApp.setState({ tree, treeLoaded: true });
     render(<Sidebar />);
-    expect(screen.queryByLabelText("Mostrar archivos de contexto")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Mostrar archivos de contexto e imágenes")).not.toBeInTheDocument();
   });
 
   it("invites creating the first space when the tree is empty", () => {
@@ -138,6 +138,7 @@ describe("Sidebar", () => {
     render(<Sidebar />);
     fireEvent.click(screen.getByRole("button", { name: "Eliminar Notas" }));
     expect(screen.getByText(/Se moverá a la papelera/)).toBeInTheDocument();
+    expect(screen.getByText(/Puedes deshacerlo con ⌘Z/)).toBeInTheDocument();
     expect(mocked.deleteEntry).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Mover a la papelera" }));
     await vi.waitFor(() => expect(mocked.deleteEntry).toHaveBeenCalledWith("Ropa/Notas.md"));
@@ -173,5 +174,25 @@ describe("Sidebar drag", () => {
     expect(dataTransfer.effectAllowed).toBe("copyLink");
     expect(screen.getByText("Notas").closest(".tree-row")).not.toHaveAttribute("draggable");
     expect(screen.getByText("Telas").closest(".tree-row")).not.toHaveAttribute("draggable");
+  });
+
+  it("hides Imágenes folders until the context toggle is on", () => {
+    const withImages: TreeNode[] = [
+      {
+        ...tree[0],
+        children: [
+          ...tree[0].children,
+          { name: "Imágenes", path: "Ropa/Imágenes", kind: "dir", children: [file("Ropa/Imágenes/a.png")] },
+        ],
+      },
+    ];
+    useApp.setState({ tree: withImages, treeLoaded: true, expanded: { Ropa: true, "Ropa/Imágenes": true } });
+    render(<Sidebar />);
+    expect(screen.queryByText("Imágenes")).toBeNull();
+    const toggle = screen.getByRole("button", { name: "Mostrar archivos de contexto e imágenes" });
+    fireEvent.click(toggle);
+    expect(screen.getByText("Imágenes")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ocultar archivos de contexto e imágenes" })).toBeInTheDocument();
+    localStorage.clear();
   });
 });

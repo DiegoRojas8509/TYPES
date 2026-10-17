@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../lib/api")>();
-  return { ...actual, api: { ...actual.api, readText: vi.fn(), writeText: vi.fn(), saveAttachment: vi.fn() } };
+  return { ...actual, api: { ...actual.api, readText: vi.fn(), writeText: vi.fn(), saveImage: vi.fn() } };
 });
 // recharts cannot measure its container under jsdom; its drawing is covered in ChartCanvas.test.tsx.
 vi.mock("./nodes/ChartCanvas", () => ({ ChartCanvas: () => <div data-testid="chart-canvas" /> }));

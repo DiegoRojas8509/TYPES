@@ -31,6 +31,11 @@ export interface ApiError {
   message: string;
 }
 
+export interface DeletedEntry {
+  original: string;
+  trashed: string;
+}
+
 export interface FsChangedPayload {
   paths: string[];
 }
@@ -73,11 +78,19 @@ export const api = {
   createBoard: (dir: string, name: string) => invoke<string>("create_board", { dir, name }),
   createFolder: (dir: string, name: string) => invoke<string>("create_folder", { dir, name }),
   renameEntry: (path: string, newName: string) => invoke<string>("rename_entry", { path, newName }),
-  deleteEntry: (path: string) => invoke<{ original: string; trashed: string }>("delete_entry", { path }),
+  /** `trashed` is "" when the trash location is unknown (then the delete cannot be undone). */
+  deleteEntry: (path: string) => invoke<DeletedEntry>("delete_entry", { path }),
+  /** Moves a trashed item back; rejects with kind "exists" if something is already at `original`. */
+  restoreEntry: (original: string, trashed: string) => invoke<string>("restore_entry", { original, trashed }),
 
   importFiles: (destDir: string, sources: string[]) =>
     invoke<string[]>("import_files", { destDir, sources }),
-  /** Returns the relative path of the saved file inside `<space>/adjuntos/`. */
+  /** Saves into `<dir>/Imágenes/` (de-duplicated) and returns the relative path. */
+  saveImage: (dir: string, fileName: string, bytes: Uint8Array | number[]) =>
+    invoke<string>("save_image", { dir, fileName, bytes: Array.from(bytes) }),
+  /** Images directly inside `<dir>/Imágenes/`, sorted; [] when the folder does not exist. */
+  listImages: (dir: string) => invoke<string[]>("list_images", { dir }),
+  /** Returns the relative path of the saved file inside `<space>/Imágenes/`. */
   saveAttachment: (space: string, fileName: string, bytes: Uint8Array | number[]) =>
     invoke<string>("save_attachment", { space, fileName, bytes: Array.from(bytes) }),
 

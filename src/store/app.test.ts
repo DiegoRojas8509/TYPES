@@ -12,6 +12,7 @@ vi.mock("../lib/api", () => ({
     createFolder: vi.fn(),
     renameEntry: vi.fn(),
     deleteEntry: vi.fn(),
+    restoreEntry: vi.fn(),
   },
   onFsChanged: vi.fn(async (cb: (p: { paths: string[] }) => void) => {
     fsListeners.push(cb);
@@ -124,5 +125,43 @@ describe("store", () => {
     expect(useApp.getState().openPath).toBe("Ropa/Plan.canvas");
     expect(useApp.getState().expanded["Ropa"]).toBe(true);
     expect(mocked.listTree).toHaveBeenCalled();
+  });
+
+  describe("undo delete", () => {
+    it("deleteEntry remembers where the item went", async () => {
+      mocked.deleteEntry.mockResolvedValue({ original: "Ropa/Notas.md", trashed: "/Users/d/.Trash/Notas.md" });
+      await useApp.getState().deleteEntry("Ropa/Notas.md");
+      expect(useApp.getState().lastDeleted).toEqual({ original: "Ropa/Notas.md", trashed: "/Users/d/.Trash/Notas.md" });
+    });
+
+    it("does not remember a delete whose trash location is unknown", async () => {
+      mocked.deleteEntry.mockResolvedValue({ original: "Ropa/Notas.md", trashed: "" });
+      await useApp.getState().deleteEntry("Ropa/Notas.md");
+      expect(useApp.getState().lastDeleted).toBeNull();
+    });
+
+    it("undoDelete restores, refreshes the tree, announces and clears", async () => {
+      useApp.setState({ lastDeleted: { original: "Ropa/Notas.md", trashed: "/t/Notas.md" } });
+      mocked.restoreEntry.mockResolvedValue("Ropa/Notas.md");
+      await useApp.getState().undoDelete();
+      expect(mocked.restoreEntry).toHaveBeenCalledWith("Ropa/Notas.md", "/t/Notas.md");
+      expect(mocked.listTree).toHaveBeenCalled();
+      expect(useApp.getState().notice).toMatchObject({ message: "Se restauró «Notas»", tone: "info" });
+      expect(useApp.getState().lastDeleted).toBeNull();
+    });
+
+    it("undoDelete shows the error and keeps lastDeleted when it fails", async () => {
+      const last = { original: "Ropa/Notas.md", trashed: "/t/Notas.md" };
+      useApp.setState({ lastDeleted: last });
+      mocked.restoreEntry.mockRejectedValue({ kind: "exists", message: "Ya existe «Notas.md»; no la sobrescribo." });
+      await useApp.getState().undoDelete();
+      expect(useApp.getState().notice?.message).toBe("Ya existe «Notas.md»; no la sobrescribo.");
+      expect(useApp.getState().lastDeleted).toEqual(last);
+    });
+
+    it("undoDelete without anything to undo does nothing", async () => {
+      await useApp.getState().undoDelete();
+      expect(mocked.restoreEntry).not.toHaveBeenCalled();
+    });
   });
 });

@@ -1,4 +1,4 @@
-// Image paste/drop for the board: saves each image as an attachment and adds a
+// Image paste/drop for the board: saves each image in the board folder's `Imágenes/` and adds a
 // `file` node pointing at it. Everything after an `await` re-checks the live
 // `editableRef` (through `addNodes`) so a board that became unreadable meanwhile
 // is never written over.
@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, type DragEvent, type RefObject } from "
 import { useReactFlow } from "@xyflow/react";
 import { api, errorMessage } from "../../lib/api";
 import type { CanvasNode } from "../../lib/canvas";
-import { TREE_PATH_MIME, absolutePath, kindOf, spaceOf } from "../../lib/paths";
+import { TREE_PATH_MIME, absolutePath, kindOf, parentOf, spaceOf } from "../../lib/paths";
 import { useApp } from "../../store/app";
 import { defaultNode } from "./addMenu";
 import { whole } from "./boardModel";
@@ -45,8 +45,8 @@ export function useBoardImages({
 
   const insertImages = useCallback(
     async (files: File[], at?: { x: number; y: number }) => {
-      const space = spaceOf(path);
-      if (!path.includes("/") || !space) {
+      const folder = parentOf(path);
+      if (!folder || !spaceOf(path)) {
         notify("Las imágenes se guardan dentro de un espacio. Mueve esta pizarra a uno para pegar imágenes.");
         return;
       }
@@ -55,7 +55,7 @@ export function useBoardImages({
         try {
           const ext = IMAGE_EXT[file.type] ?? "png";
           const name = file.name || `imagen.${ext}`;
-          const saved = await api.saveAttachment(space, name, new Uint8Array(await file.arrayBuffer()));
+          const saved = await api.saveImage(folder, name, new Uint8Array(await file.arrayBuffer()));
           if (!mounted.current) return;
           const node = defaultNode("image", whole(origin.x - 150), whole(origin.y - 110));
           addNodes([{ ...node, file: plainRelative(path, saved) }]);

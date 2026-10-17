@@ -4,6 +4,7 @@ import { DocumentPane } from "./features/shell/DocumentPane";
 import { IconPanel } from "./features/shell/icons";
 import { Notice } from "./features/shell/Notice";
 import { ResizeHandle } from "./features/shell/ResizeHandle";
+import { useUndoShortcut } from "./features/shell/useUndoShortcut";
 import { Sidebar } from "./features/sidebar/Sidebar";
 import { startSync, useApp } from "./store/app";
 
@@ -38,6 +39,8 @@ function App() {
   const toggleChat = useApp((s) => s.toggleChat);
   const [sidebarW, setSidebarW] = usePaneWidth("types.sidebarWidth", 260, LIMITS.sidebar);
   const [chatW, setChatW] = usePaneWidth("types.chatWidth", 380, LIMITS.chat);
+
+  useUndoShortcut();
 
   useEffect(() => {
     void useApp.getState().init();
