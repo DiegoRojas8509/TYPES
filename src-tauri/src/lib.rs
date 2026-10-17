@@ -43,6 +43,9 @@ pub fn run() {
             workspace::create_folder,
             workspace::rename_entry,
             workspace::delete_entry,
+            workspace::restore_entry,
+            workspace::save_image,
+            workspace::list_images,
             workspace::import_files,
             workspace::save_attachment,
         ])

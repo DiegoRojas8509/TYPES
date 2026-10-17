@@ -73,7 +73,7 @@ export const api = {
   createBoard: (dir: string, name: string) => invoke<string>("create_board", { dir, name }),
   createFolder: (dir: string, name: string) => invoke<string>("create_folder", { dir, name }),
   renameEntry: (path: string, newName: string) => invoke<string>("rename_entry", { path, newName }),
-  deleteEntry: (path: string) => invoke<void>("delete_entry", { path }),
+  deleteEntry: (path: string) => invoke<{ original: string; trashed: string }>("delete_entry", { path }),
 
   importFiles: (destDir: string, sources: string[]) =>
     invoke<string[]>("import_files", { destDir, sources }),

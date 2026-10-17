@@ -88,7 +88,7 @@ describe("store", () => {
 
   it("deleting the open file or its folder closes it", async () => {
     useApp.getState().open("Ropa/Notas.md");
-    mocked.deleteEntry.mockResolvedValue(undefined);
+    mocked.deleteEntry.mockResolvedValue({ original: "", trashed: "" });
     await useApp.getState().deleteEntry("Ropa");
     expect(useApp.getState().openPath).toBeNull();
     expect(useApp.getState().activeSpace).toBeNull();
@@ -96,7 +96,7 @@ describe("store", () => {
 
   it("deleting an unrelated file keeps the open one", async () => {
     useApp.getState().open("Ropa/Notas.md");
-    mocked.deleteEntry.mockResolvedValue(undefined);
+    mocked.deleteEntry.mockResolvedValue({ original: "", trashed: "" });
     await useApp.getState().deleteEntry("Ropa/Otra.md");
     expect(useApp.getState().openPath).toBe("Ropa/Notas.md");
   });

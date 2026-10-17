@@ -20,7 +20,18 @@ pub struct TreeNode {
     pub children: Vec<TreeNode>,
 }
 
-const ADJUNTOS: &str = "adjuntos";
+/// Name of the per-folder image store. Always written in NFC.
+pub const IMAGES_DIR: &str = "Im\u{e1}genes";
+
+const IMAGE_EXTS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp", "svg", "avif", "bmp"];
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct DeletedEntry {
+    /// Workspace-relative path the entry had.
+    pub original: String,
+    /// Absolute path inside the system trash; empty when the platform cannot tell.
+    pub trashed: String,
+}
 
 fn is_taken(path: &Path) -> bool {
     std::fs::symlink_metadata(path).is_ok()
@@ -256,7 +267,6 @@ pub fn create_space_in(root: &Path, name: &str) -> Result<String> {
     let dir = root.join(&unique);
     std::fs::create_dir(&dir)?;
     std::fs::write(dir.join("CLAUDE.md"), crate::templates::SPACE_CLAUDE_MD)?;
-    std::fs::create_dir(dir.join(ADJUNTOS))?;
     Ok(unique)
 }
 
@@ -321,47 +331,160 @@ pub fn rename_entry_in(root: &Path, rel: &str, new_name: &str) -> Result<String>
     Ok(child_rel(parent_parts, &final_name))
 }
 
-/// `trasher` moves a path to the system trash; injected so tests never touch it.
+/// `trasher` moves a path to the system trash and returns where it landed
+/// (empty path when unknown); injected so tests never touch the real trash.
 pub fn delete_entry_with(
     root: &Path,
     rel: &str,
-    trasher: impl Fn(&Path) -> Result<()>,
-) -> Result<()> {
+    trasher: impl Fn(&Path) -> Result<PathBuf>,
+) -> Result<DeletedEntry> {
     let p = resolve_entry(root, rel)?;
-    trasher(&p)
+    let original = join_rel(&rel_parts(rel)?);
+    let trashed = trasher(&p)?;
+    Ok(DeletedEntry { original, trashed: trashed.to_string_lossy().into_owned() })
 }
 
-fn system_trash(p: &Path) -> Result<()> {
+fn system_trash(p: &Path) -> Result<PathBuf> {
     // On macOS the default Finder method is slow, shows a progress window and
-    // asks for Automation permission; NSFileManager moves to the trash silently.
+    // asks for Automation permission; NSFileManager moves to the trash silently
+    // and, called directly, tells us the resulting location (needed for undo).
     #[cfg(target_os = "macos")]
     {
-        use trash::macos::{DeleteMethod, TrashContextExtMacos};
-        let mut ctx = trash::TrashContext::default();
-        ctx.set_delete_method(DeleteMethod::NsFileManager);
-        ctx.delete(p).map_err(|e| AppError::Io(e.to_string()))
+        use objc2::rc::Retained;
+        use objc2_foundation::{NSFileManager, NSString, NSURL};
+        let path = p.to_str().ok_or_else(|| AppError::Invalid("la ruta no es texto válido".into()))?;
+        let url = NSURL::fileURLWithPath(&NSString::from_str(path));
+        let mut result: Option<Retained<NSURL>> = None;
+        NSFileManager::defaultManager()
+            .trashItemAtURL_resultingItemURL_error(&url, Some(&mut result))
+            .map_err(|e| AppError::Io(e.to_string()))?;
+        Ok(result
+            .and_then(|u| u.path())
+            .map(|s| PathBuf::from(s.to_string()))
+            .unwrap_or_default())
     }
     #[cfg(not(target_os = "macos"))]
     {
-        trash::delete(p).map_err(|e| AppError::Io(e.to_string()))
+        trash::delete(p).map_err(|e| AppError::Io(e.to_string()))?;
+        Ok(PathBuf::new())
     }
 }
 
-/// Returns `<root>/<space>/adjuntos`, creating `adjuntos` if needed.
-/// `space` is the first path segment of `rel`.
-fn adjuntos_dir(root: &Path, rel: &str) -> Result<(PathBuf, String)> {
-    let parts = rel_parts(rel)?;
-    let space = parts
-        .first()
-        .ok_or_else(|| AppError::Invalid("falta indicar el espacio".into()))?;
-    let space_path = resolve_dir(root, space)?;
-    let dir = space_path.join(ADJUNTOS);
-    std::fs::create_dir_all(&dir)?;
-    Ok((dir, format!("{space}/{ADJUNTOS}")))
+fn copy_recursive(from: &Path, to: &Path) -> std::io::Result<()> {
+    let md = std::fs::symlink_metadata(from)?;
+    if md.is_dir() {
+        std::fs::create_dir(to)?;
+        for e in std::fs::read_dir(from)? {
+            let e = e?;
+            copy_recursive(&e.path(), &to.join(e.file_name()))?;
+        }
+        Ok(())
+    } else {
+        std::fs::copy(from, to).map(|_| ())
+    }
 }
 
+fn move_path(from: &Path, to: &Path) -> Result<()> {
+    if std::fs::rename(from, to).is_ok() {
+        return Ok(());
+    }
+    // Probably a different volume: copy, then remove the source only if the copy worked.
+    if let Err(e) = copy_recursive(from, to) {
+        let _ = if to.is_dir() { std::fs::remove_dir_all(to) } else { std::fs::remove_file(to) };
+        return Err(e.into());
+    }
+    if from.is_dir() {
+        std::fs::remove_dir_all(from)?;
+    } else {
+        std::fs::remove_file(from)?;
+    }
+    Ok(())
+}
+
+/// `trashed` lives outside the workspace by nature: only accept an existing,
+/// absolute, `..`-free path whose parent chain contains a `.Trash`/`.Trashes` folder.
+fn validate_trashed(trashed: &str) -> Result<PathBuf> {
+    let gone = || AppError::NotFound("el elemento en la papelera".into());
+    let p = Path::new(trashed);
+    if trashed.is_empty() || !p.is_absolute() || trashed.contains('\0') {
+        return Err(AppError::Invalid("la ubicación en la papelera no es válida".into()));
+    }
+    if p.components().any(|c| matches!(c, Component::ParentDir | Component::CurDir)) {
+        return Err(AppError::Invalid("la ubicación en la papelera no es válida".into()));
+    }
+    std::fs::symlink_metadata(p).map_err(|_| gone())?;
+    let name = p.file_name().ok_or_else(gone)?;
+    let parent = p.parent().ok_or_else(gone)?.canonicalize().map_err(|_| gone())?;
+    let in_trash = parent
+        .components()
+        .any(|c| matches!(c, Component::Normal(s) if s == ".Trash" || s == ".Trashes"));
+    if !in_trash {
+        return Err(AppError::Invalid("el elemento no está en la papelera".into()));
+    }
+    Ok(parent.join(name))
+}
+
+/// Moves a trashed entry back to `original`. Never overwrites.
+pub fn restore_entry_in(root: &Path, original: &str, trashed: &str) -> Result<String> {
+    let parts = rel_parts(original)?;
+    let name = parts
+        .last()
+        .ok_or_else(|| AppError::Invalid("falta la ruta original".into()))?
+        .clone();
+    let dest = resolve(root, &join_rel(&parts))?;
+    let src = validate_trashed(trashed)?;
+    if is_taken(&dest) {
+        return Err(AppError::Invalid(format!("Ya existe «{name}»; no la sobrescribo.")));
+    }
+    if let Some(parent) = dest.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    move_path(&src, &dest)?;
+    Ok(join_rel(&parts))
+}
+
+/// Returns `<root>/<dir>/Imágenes` (created when `create`) and its workspace-relative path.
+fn images_dir(root: &Path, dir: &str, create: bool) -> Result<(PathBuf, String)> {
+    let parts = rel_parts(dir)?;
+    let base = resolve_dir(root, &join_rel(&parts))?;
+    let images = base.join(IMAGES_DIR);
+    if create {
+        std::fs::create_dir_all(&images)?;
+    }
+    Ok((images, child_rel(&parts, IMAGES_DIR)))
+}
+
+pub fn save_image_in(root: &Path, dir: &str, file_name: &str, bytes: &[u8]) -> Result<String> {
+    let name = validate_name(file_name)?;
+    let (images, rel_dir) = images_dir(root, dir, true)?;
+    let (stem, ext) = split_ext(name);
+    let unique = unique_name(&images, stem, ext);
+    std::fs::write(images.join(&unique), bytes)?;
+    Ok(format!("{rel_dir}/{unique}"))
+}
+
+pub fn list_images_in(root: &Path, dir: &str) -> Result<Vec<String>> {
+    let (images, rel_dir) = images_dir(root, dir, false)?;
+    let Ok(entries) = std::fs::read_dir(&images) else { return Ok(Vec::new()) };
+    let mut names: Vec<String> = entries
+        .flatten()
+        .filter(|e| e.file_type().map(|t| t.is_file()).unwrap_or(false))
+        .filter_map(|e| e.file_name().to_str().map(String::from))
+        .filter(|n| !n.starts_with('.'))
+        .filter(|n| {
+            Path::new(n)
+                .extension()
+                .and_then(|e| e.to_str())
+                .is_some_and(|e| IMAGE_EXTS.contains(&e.to_ascii_lowercase().as_str()))
+        })
+        .collect();
+    names.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()).then_with(|| a.cmp(b)));
+    Ok(names.into_iter().map(|n| format!("{rel_dir}/{n}")).collect())
+}
+
+/// Copies external files into `<dest_dir>/Imágenes/`.
 pub fn import_files_in(root: &Path, dest_dir: &str, sources: &[String]) -> Result<Vec<String>> {
-    let (dir, rel_dir) = adjuntos_dir(root, dest_dir)?;
+    let (dir, rel_dir) = images_dir(root, dest_dir, true)?;
     let mut out = Vec::new();
     for src in sources {
         let src = Path::new(src);
@@ -381,13 +504,13 @@ pub fn import_files_in(root: &Path, dest_dir: &str, sources: &[String]) -> Resul
     Ok(out)
 }
 
+/// Chat attachments: stored in the space's own `Imágenes/` (first path segment).
 pub fn save_attachment_in(root: &Path, space: &str, file_name: &str, bytes: &[u8]) -> Result<String> {
-    let name = validate_name(file_name)?;
-    let (dir, rel_dir) = adjuntos_dir(root, space)?;
-    let (stem, ext) = split_ext(name);
-    let unique = unique_name(&dir, stem, ext);
-    std::fs::write(dir.join(&unique), bytes)?;
-    Ok(format!("{rel_dir}/{unique}"))
+    let parts = rel_parts(space)?;
+    let space = parts
+        .first()
+        .ok_or_else(|| AppError::Invalid("falta indicar el espacio".into()))?;
+    save_image_in(root, space, file_name, bytes)
 }
 
 // --- Tauri commands: thin wrappers over the functions above ---
@@ -433,8 +556,23 @@ pub fn rename_entry(state: State<AppState>, path: String, new_name: String) -> R
 }
 
 #[tauri::command]
-pub fn delete_entry(state: State<AppState>, path: String) -> Result<()> {
+pub fn delete_entry(state: State<AppState>, path: String) -> Result<DeletedEntry> {
     delete_entry_with(&state.root(), &path, system_trash)
+}
+
+#[tauri::command]
+pub fn restore_entry(state: State<AppState>, original: String, trashed: String) -> Result<String> {
+    restore_entry_in(&state.root(), &original, &trashed)
+}
+
+#[tauri::command]
+pub fn save_image(state: State<AppState>, dir: String, file_name: String, bytes: Vec<u8>) -> Result<String> {
+    save_image_in(&state.root(), &dir, &file_name, &bytes)
+}
+
+#[tauri::command]
+pub fn list_images(state: State<AppState>, dir: String) -> Result<Vec<String>> {
+    list_images_in(&state.root(), &dir)
 }
 
 #[tauri::command]
@@ -556,13 +694,14 @@ mod tests {
     }
 
     #[test]
-    fn create_space_writes_claude_md_and_adjuntos() {
+    fn create_space_writes_claude_md_without_image_folder() {
         let (_d, root) = ws();
         assert_eq!(create_space_in(&root, "Ropa").unwrap(), "Ropa");
         let md = fs::read_to_string(root.join("Ropa/CLAUDE.md")).unwrap();
         assert!(md.contains("Proveedores y tarifas") && md.contains("Márgenes objetivo"));
         assert!(md.contains(".canvas"), "a new space must point at boards");
-        assert!(root.join("Ropa/adjuntos").is_dir());
+        assert!(!root.join("Ropa/adjuntos").exists());
+        assert!(!root.join("Ropa").join(IMAGES_DIR).exists());
         assert_eq!(create_space_in(&root, "Ropa").unwrap(), "Ropa 2");
     }
 
@@ -709,7 +848,7 @@ mod tests {
         assert_eq!(read_text_in(&root, "Ropa/Diseño otoño.md").unwrap(), "nuevo");
         // no temp files left behind
         let n = fs::read_dir(root.join("Ropa")).unwrap().count();
-        assert_eq!(n, 3); // CLAUDE.md, adjuntos, the page
+        assert_eq!(n, 2); // CLAUDE.md, the page
     }
 
     #[test]
@@ -724,29 +863,74 @@ mod tests {
     }
 
     #[test]
-    fn save_attachment_lands_in_adjuntos() {
-        let (_d, root) = ws();
-        create_space_in(&root, "Ropa").unwrap();
-        let a = save_attachment_in(&root, "Ropa", "foto ñ.png", &[1, 2, 3]).unwrap();
-        assert_eq!(a, "Ropa/adjuntos/foto ñ.png");
-        assert_eq!(fs::read(root.join(&a)).unwrap(), [1, 2, 3]);
-        assert_eq!(save_attachment_in(&root, "Ropa", "foto ñ.png", &[9]).unwrap(), "Ropa/adjuntos/foto ñ 2.png");
-        assert!(save_attachment_in(&root, "Ropa", "../x.png", &[]).is_err());
-        assert!(save_attachment_in(&root, "Nada", "x.png", &[]).is_err());
-        assert!(save_attachment_in(&root, "..", "x.png", &[]).is_err());
+    fn images_dir_name_is_nfc() {
+        assert_eq!(IMAGES_DIR, "Im\u{e1}genes");
     }
 
     #[test]
-    fn import_files_copies_into_adjuntos() {
+    fn save_image_lands_in_the_given_folder_level() {
+        let (_d, root) = ws();
+        create_space_in(&root, "Ropa").unwrap();
+        create_folder_in(&root, "Ropa", "Maquila").unwrap();
+        let a = save_image_in(&root, "Ropa", "foto ñ.png", &[1, 2, 3]).unwrap();
+        assert_eq!(a, "Ropa/Imágenes/foto ñ.png");
+        assert_eq!(fs::read(root.join(&a)).unwrap(), [1, 2, 3]);
+        let b = save_image_in(&root, "Ropa/Maquila", "p.png", &[7]).unwrap();
+        assert_eq!(b, "Ropa/Maquila/Imágenes/p.png");
+        assert!(root.join("Ropa/Maquila/Imágenes/p.png").is_file());
+        assert!(!root.join("Ropa/Imágenes/p.png").exists());
+        // duplicates never overwrite
+        assert_eq!(save_image_in(&root, "Ropa", "foto ñ.png", &[9]).unwrap(), "Ropa/Imágenes/foto ñ 2.png");
+        assert_eq!(fs::read(root.join(&a)).unwrap(), [1, 2, 3]);
+        assert!(save_image_in(&root, "Ropa", "../x.png", &[]).is_err());
+        assert!(save_image_in(&root, "Nada", "x.png", &[]).is_err());
+        assert!(matches!(save_image_in(&root, "..", "x.png", &[]), Err(AppError::OutsideWorkspace)));
+    }
+
+    #[test]
+    fn save_attachment_lands_in_space_images_dir() {
+        let (_d, root) = ws();
+        create_space_in(&root, "Ropa").unwrap();
+        assert_eq!(save_attachment_in(&root, "Ropa", "a.png", &[1]).unwrap(), "Ropa/Imágenes/a.png");
+        // any path inside the space: the space is its first segment
+        assert_eq!(save_attachment_in(&root, "Ropa/Sub", "a.png", &[1]).unwrap(), "Ropa/Imágenes/a 2.png");
+        assert!(save_attachment_in(&root, "", "a.png", &[1]).is_err());
+    }
+
+    #[test]
+    fn list_images_is_flat_filtered_sorted_and_empty_without_folder() {
+        let (_d, root) = ws();
+        create_space_in(&root, "Ropa").unwrap();
+        assert!(list_images_in(&root, "Ropa").unwrap().is_empty());
+        let dir = root.join("Ropa").join(IMAGES_DIR);
+        fs::create_dir_all(dir.join("sub")).unwrap();
+        fs::write(dir.join("sub/deep.png"), "").unwrap();
+        for n in ["b.PNG", "a.jpg", "c.webp", "d.svg", "e.gif", "f.jpeg", "g.avif", "h.bmp", "notas.md", "sin_ext", ".oculta.png"] {
+            fs::write(dir.join(n), "").unwrap();
+        }
+        let got = list_images_in(&root, "Ropa").unwrap();
+        let expected: Vec<String> = ["a.jpg", "b.PNG", "c.webp", "d.svg", "e.gif", "f.jpeg", "g.avif", "h.bmp"]
+            .iter()
+            .map(|n| format!("Ropa/Imágenes/{n}"))
+            .collect();
+        assert_eq!(got, expected);
+        assert!(list_images_in(&root, "Nada").is_err());
+        assert!(matches!(list_images_in(&root, ".."), Err(AppError::OutsideWorkspace)));
+    }
+
+    #[test]
+    fn import_files_copies_into_the_target_folder_images_dir() {
         let (d, root) = ws();
         create_space_in(&root, "Ropa").unwrap();
+        create_folder_in(&root, "Ropa", "Sub").unwrap();
         let src = d.path().join("tela.jpg");
         fs::write(&src, "img").unwrap();
         let got = import_files_in(&root, "Ropa", &[src.to_string_lossy().into()]).unwrap();
-        assert_eq!(got, ["Ropa/adjuntos/tela.jpg"]);
-        // dest_dir may be any path inside the space: the space is its first segment
+        assert_eq!(got, ["Ropa/Imágenes/tela.jpg"]);
         let got = import_files_in(&root, "Ropa/Sub", &[src.to_string_lossy().into()]).unwrap();
-        assert_eq!(got, ["Ropa/adjuntos/tela 2.jpg"]);
+        assert_eq!(got, ["Ropa/Sub/Imágenes/tela.jpg"]);
+        let got = import_files_in(&root, "Ropa", &[src.to_string_lossy().into()]).unwrap();
+        assert_eq!(got, ["Ropa/Imágenes/tela 2.jpg"]);
         assert!(import_files_in(&root, "Nada", &[src.to_string_lossy().into()]).is_err());
     }
 
@@ -759,21 +943,99 @@ mod tests {
     }
 
     #[test]
-    fn delete_calls_trasher_with_resolved_path_only_inside_root() {
+    fn delete_calls_trasher_and_returns_original_and_trashed() {
         let (_d, root) = ws();
         create_space_in(&root, "Ropa").unwrap();
         let page = create_page_in(&root, "Ropa", "Notas").unwrap();
         let seen = std::cell::RefCell::new(Vec::new());
-        delete_entry_with(&root, &page, |p| {
+        let got = delete_entry_with(&root, &page, |p| {
             seen.borrow_mut().push(p.to_path_buf());
-            Ok(())
+            Ok(PathBuf::from("/fake/.Trash/Notas.md"))
         })
         .unwrap();
         assert_eq!(seen.borrow().len(), 1);
         assert!(seen.borrow()[0].ends_with("Ropa/Notas.md"));
+        assert_eq!(got.original, "Ropa/Notas.md");
+        assert_eq!(got.trashed, "/fake/.Trash/Notas.md");
+        let v = serde_json::to_value(&got).unwrap();
+        assert_eq!(v["original"], "Ropa/Notas.md");
+        assert_eq!(v["trashed"], "/fake/.Trash/Notas.md");
         for bad in ["", "../x", "/etc/hosts", "Ropa/nada.md"] {
             let r = delete_entry_with(&root, bad, |_| panic!("must not trash {bad:?}"));
             assert!(r.is_err(), "{bad:?}");
         }
+    }
+
+    /// A fake trash folder that satisfies the `.Trash` rule, outside the workspace.
+    fn fake_trash(d: &tempfile::TempDir) -> PathBuf {
+        let t = d.path().join(".Trash");
+        fs::create_dir_all(&t).unwrap();
+        t
+    }
+
+    #[test]
+    fn restore_moves_back_files_and_folders() {
+        let (d, root) = ws();
+        let trash = fake_trash(&d);
+        create_space_in(&root, "Ropa").unwrap();
+        let page = create_page_in(&root, "Ropa", "Notas").unwrap();
+        fs::write(root.join(&page), "texto").unwrap();
+        let t = delete_entry_with(&root, &page, |p| {
+            let dest = trash.join("Notas.md");
+            fs::rename(p, &dest).unwrap();
+            Ok(dest)
+        })
+        .unwrap();
+        assert!(!root.join(&page).exists());
+        assert_eq!(restore_entry_in(&root, &t.original, &t.trashed).unwrap(), "Ropa/Notas.md");
+        assert_eq!(fs::read_to_string(root.join(&page)).unwrap(), "texto");
+        assert!(!trash.join("Notas.md").exists());
+
+        // a whole folder, restored under a parent that vanished
+        let folder = trash.join("Moldes");
+        fs::create_dir_all(folder.join("in")).unwrap();
+        fs::write(folder.join("in/a.txt"), "a").unwrap();
+        assert_eq!(restore_entry_in(&root, "Ropa/Moldes", &folder.to_string_lossy()).unwrap(), "Ropa/Moldes");
+        assert_eq!(fs::read_to_string(root.join("Ropa/Moldes/in/a.txt")).unwrap(), "a");
+    }
+
+    #[test]
+    fn restore_never_overwrites() {
+        let (d, root) = ws();
+        let trash = fake_trash(&d);
+        create_space_in(&root, "Ropa").unwrap();
+        let page = create_page_in(&root, "Ropa", "Notas").unwrap();
+        fs::write(root.join(&page), "nuevo").unwrap();
+        fs::write(trash.join("Notas.md"), "viejo").unwrap();
+        let err = restore_entry_in(&root, &page, &trash.join("Notas.md").to_string_lossy()).unwrap_err();
+        assert!(err.message().contains("Ya existe «Notas.md»; no la sobrescribo."), "{}", err.message());
+        assert_eq!(fs::read_to_string(root.join(&page)).unwrap(), "nuevo");
+        assert_eq!(fs::read_to_string(trash.join("Notas.md")).unwrap(), "viejo");
+    }
+
+    #[test]
+    fn restore_rejects_unsafe_original_and_trashed() {
+        let (d, root) = ws();
+        let trash = fake_trash(&d);
+        fs::write(trash.join("x.md"), "x").unwrap();
+        let ok = trash.join("x.md").to_string_lossy().to_string();
+        for bad in ["../x.md", "/etc/x.md", "a/../../x.md", ""] {
+            assert!(restore_entry_in(&root, bad, &ok).is_err(), "{bad:?}");
+        }
+        assert!(trash.join("x.md").exists());
+        // trashed not in a .Trash folder
+        let plain = d.path().join("plain.md");
+        fs::write(&plain, "p").unwrap();
+        assert!(restore_entry_in(&root, "p.md", &plain.to_string_lossy()).is_err());
+        assert!(plain.exists());
+        // relative, traversal out of the trash, missing, and the trash itself
+        assert!(restore_entry_in(&root, "p.md", "x.md").is_err());
+        let sneaky = format!("{}/../plain.md", trash.display());
+        assert!(restore_entry_in(&root, "p.md", &sneaky).is_err());
+        let gone = trash.join("nada.md").to_string_lossy().to_string();
+        let err = restore_entry_in(&root, "p.md", &gone).unwrap_err();
+        assert!(err.message().contains("papelera"), "{}", err.message());
+        assert!(restore_entry_in(&root, "p.md", &trash.to_string_lossy()).is_err());
+        assert!(!root.join("p.md").exists());
     }
 }

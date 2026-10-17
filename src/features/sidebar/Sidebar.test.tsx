@@ -133,7 +133,7 @@ describe("Sidebar", () => {
   });
 
   it("asks for confirmation before deleting and then trashes", async () => {
-    mocked.deleteEntry.mockResolvedValue(undefined);
+    mocked.deleteEntry.mockResolvedValue({ original: "", trashed: "" });
     useApp.setState({ tree, treeLoaded: true, expanded: { Ropa: true } });
     render(<Sidebar />);
     fireEvent.click(screen.getByRole("button", { name: "Eliminar Notas" }));
