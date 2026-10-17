@@ -20,6 +20,7 @@ Para features nuevas usa superpowers (brainstorming → writing-plans → subage
 | Fase | Contenido | Estado |
 |------|-----------|--------|
 | 1 | Espacios y páginas, editor Markdown, visor de HTML e imágenes, refresco en vivo, panel de chat con Claude | Código completo (tareas 1-7, pruebas verdes) y `Types.app` compilada. **Falta la prueba real con la ventana abierta** (plan, Tarea 8 paso 3; se cubre junto con la de la pizarra): ver `docs/superpowers/plans/2026-10-12-types-fase-1.md` |
+| Imágenes | Repositorio `Imágenes/` por carpeta, panel de imágenes en la pizarra, deshacer borrados, escala tipográfica mayor y sidebar colapsable (rama `feat/pizarra`) | Código completo (pruebas verdes), `Types.app` compila y firmada. **Falta la prueba real con la ventana abierta** (se cubre junto con la de la pizarra): ver `docs/superpowers/specs/2026-10-16-imagenes-design.md` |
 | Pizarra | Pizarras `.canvas` (JSON Canvas + bloques extra) como página principal; el "+" crea pizarras; Claude sabe cuál está abierta y la puede ordenar | Código completo (tareas 1-9, pruebas verdes), `Types.app` compila. **Falta la prueba real con la ventana abierta**: ver `docs/superpowers/plans/2026-10-14-pizarra.md` (Tarea 10) |
 | 2 | Tableros tipo Trello | Absorbida por la pizarra (zonas + bloques de proceso). Solo se retoma si Diego pide columnas/tarjetas estilo Kanban |
 | 3 | Exportación (Google Drive y otros destinos) | Pendiente |
@@ -45,9 +46,9 @@ espacios/
     *.canvas           pizarras: la página principal (lo que crea el "+")
     *.md               notas Markdown: ya existentes y los CLAUDE.md; se abren en el editor
     *.html             salidas visuales de Claude: dashboards, reportes, previews de moldes
-    adjuntos/          imágenes y archivos que Diego suelta en una pizarra, nota o chat
+    Imágenes/          imágenes de esta carpeta (se crea al subir la primera); cada subcarpeta tiene la suya
 ```
-- Una pizarra es un `.canvas`: JSON Canvas (`{nodes, edges}`; todo nodo lleva `id, type, x, y, width, height, color?`) más bloques extra. Tipos: `text` (nota Markdown), `file` (imagen, ruta relativa a la carpeta del `.canvas`, normalmente en `adjuntos/`), `group` (zona), `table`, `chart`, `timeline`, `decision`; un tipo desconocido se conserva intacto. Campos de cada tipo: plan `docs/superpowers/plans/2026-10-14-pizarra.md`, sección "Formato `.canvas`".
+- Una pizarra es un `.canvas`: JSON Canvas (`{nodes, edges}`; todo nodo lleva `id, type, x, y, width, height, color?`) más bloques extra. Tipos: `text` (nota Markdown), `file` (imagen, ruta relativa a la carpeta del `.canvas`, normalmente en la `Imágenes/` de esa misma carpeta, p. ej. `Imágenes/x.png`), `group` (zona), `table`, `chart`, `timeline`, `decision`; un tipo desconocido se conserva intacto. Campos de cada tipo: plan `docs/superpowers/plans/2026-10-14-pizarra.md`, sección "Formato `.canvas`".
 - El "+" del sidebar crea pizarras. Los `.md` siguen abriéndose y guardándose en el editor Tiptap, pero ya no se crean desde la app. Sin formato propietario ni base de datos: ambos son texto plano legible fuera de la app.
 - Los HTML que genera Claude deben ser autocontenidos (CSS y JS inline), porque el visor los muestra aislados.
 - El sistema de archivos es la única fuente de verdad. La app no guarda copia del contenido.
@@ -55,8 +56,8 @@ espacios/
 ### Backend (Rust, `src-tauri/src/`)
 | Módulo | Responsabilidad |
 |--------|-----------------|
-| `workspace.rs` | Raíz del workspace, árbol, leer/escribir, crear/renombrar/borrar (a la papelera), importar adjuntos, `create_board` (crea un `.canvas` vacío sin pisar nombres). Toda ruta se valida contra la raíz. |
-| `templates.rs` | Plantillas de los CLAUDE.md del workspace y de cada espacio, incluida la sección `## Pizarras` (reglas del `.canvas` para Claude; se agrega al CLAUDE.md raíz existente sin tocar el resto). |
+| `workspace.rs` | Raíz del workspace, árbol, leer/escribir, crear/renombrar/borrar (a la papelera), importar archivos, `create_board`, repositorio de imágenes por carpeta (`save_image`/`list_images` sobre `<carpeta>/Imágenes/`, `save_attachment` para el chat), `delete_entry` (devuelve `{original, trashed}`) y `restore_entry` (deshacer), y la migración de arranque de los CLAUDE.md viejos (crea un `.canvas` vacío sin pisar nombres). Toda ruta se valida contra la raíz. |
+| `templates.rs` | Plantillas de los CLAUDE.md del workspace y de cada espacio, incluida la sección `## Pizarras` y las líneas viejas de `adjuntos/` que la migración reemplaza (reglas del `.canvas` para Claude; se agrega al CLAUDE.md raíz existente sin tocar el resto). |
 | `watcher.rs` | Vigila el workspace y emite el evento `fs-changed` al frontend. |
 | `claude.rs` | Localiza el binario de Claude Code, lo lanza en la carpeta del espacio y retransmite su salida como eventos `claude-event`. |
 | `settings.rs` | Ajustes persistentes (raíz del workspace, ruta manual del binario). |
@@ -70,7 +71,7 @@ Cada feature es dueña de sus componentes y su lógica. Se comunican por los sto
 - Un proceso por mensaje: `claude -p <texto> --output-format stream-json --verbose --include-partial-messages --permission-mode acceptEdits --allowedTools Read Write Edit Glob Grep WebSearch WebFetch Bash Skill Agent NotebookEdit [--model <alias>] [--resume <session_id>]`, con `cwd` = carpeta del espacio.
 - Una conversación por espacio; el `session_id` se guarda para continuarla.
 - Si hay una pizarra `.canvas` abierta dentro del espacio, el prompt empieza con `Pizarra abierta: <ruta relativa al espacio>` (parámetro `board` de `claude_send`). El botón "Ordenar con Claude" de la pizarra solo envía un mensaje por el chat; nunca escribe el `.canvas`.
-- Las imágenes del chat se guardan en `<espacio>/adjuntos/` y se le pasan a Claude como rutas en el mensaje.
+- Las imágenes del chat se guardan en `<espacio>/Imágenes/` (`save_attachment`) y se le pasan a Claude como rutas en el mensaje.
 - Bash, Skill, Agent y NotebookEdit permitidos al agente embebido (decisión de Diego, 2026-10-13: mismos accesos que Claude Code en su terminal). En modo no interactivo no hay forma de aprobar permisos, así que van sin restricción. Riesgo aceptado: una nota o página web con instrucciones maliciosas podría hacerle ejecutar comandos. Si hace falta, diseñar una interfaz de permisos o restringir con `Bash(patrón)`.
 - Selector de modelo en el compositor (`src/lib/model.ts`, se guarda en localStorage); se pasa como `--model` por mensaje. "Predeterminado" = el modelo por defecto del Claude Code instalado.
 
@@ -80,7 +81,8 @@ Cada feature es dueña de sus componentes y su lógica. Se comunican por los sto
 - **Pizarras:** una edición parchea el dato crudo solo del bloque tocado; nunca reescribe bloques que Diego no tocó (conserva campos extra/desconocidos y entradas que no son objeto). Un `.canvas` inválido o vacío se abre en solo lectura y nunca se sobrescribe. Los cambios de Diego y los de Claude se fusionan por bloque (hook de merge de `useDocument`), no por archivo completo. Las notas cuyo Markdown el editor no puede conservar quedan en solo lectura.
 - **Accesibilidad de bloques:** el estado de un bloque (p. ej. hecho/en curso/pendiente, opción elegida) se distingue sin depender solo del color, y todo control es alcanzable con teclado.
 - **Rutas seguras.** Ningún comando acepta rutas que salgan de la raíz del workspace (`..`, absolutas, symlinks hacia afuera).
-- **Borrar manda a la papelera**, nunca elimina definitivo.
+- **Borrar manda a la papelera** de macOS (`NSFileManager.trashItemAtURL`, sin pasar por Finder ni pedir permiso de Automatización), nunca elimina definitivo. Cmd/Ctrl+Z restaura lo último borrado, solo fuera de campos de texto (input, textarea, select, contenteditable) para no pisar el deshacer del texto.
+- **Migración de CLAUDE.md:** al arrancar, solo en el CLAUDE.md raíz y en el de cada espacio de primer nivel, reemplaza únicamente las líneas idénticas byte a byte a las plantillas viejas que mencionaban `adjuntos/`; cualquier otra línea (incluso editada por Diego) se respeta. Es idempotente y nunca bloquea el arranque.
 - Interfaz en español; código, identificadores y commits en inglés.
 - TDD en la lógica (Rust y utilidades TS). Commits chicos y frecuentes en la rama de trabajo, nunca directo a `main`.
 - Diseño visual: sobrio y denso tipo Notion, tema claro y oscuro, sin adornos. Sin gatos.
@@ -106,7 +108,13 @@ Firma: el build firma con el certificado propio «Types Local Signing» (llavero
 - En un bloque `decision`, `chosen` se guarda por nombre de opción; un `chosen` huérfano se conserva y se avisa, nunca se borra en silencio.
 - Agente embebido con `acceptEdits`; Bash/Skill/Agent/NotebookEdit se habilitaron después por decisión de Diego (ver Integración con Claude Code).
 - Un proceso de Claude por mensaje con `--resume`, en lugar de un proceso vivo.
-- Editor (`@tiptap/markdown` 3.x): al primer guardado normaliza la sintaxis (viñetas a `-`, tablas realineadas, sin salto de línea final); no se escribe nada hasta que Diego edita. Las páginas con YAML, comentarios HTML, bloques HTML o notas al pie se abren en solo lectura porque el editor las corrompería (Diego puede forzar la edición). Imágenes en disco: ruta relativa a la carpeta de la página (`adjuntos/a.png`, o `../adjuntos/a.png` en subcarpetas).
+- Editor (`@tiptap/markdown` 3.x): al primer guardado normaliza la sintaxis (viñetas a `-`, tablas realineadas, sin salto de línea final); no se escribe nada hasta que Diego edita. Las páginas con YAML, comentarios HTML, bloques HTML o notas al pie se abren en solo lectura porque el editor las corrompería (Diego puede forzar la edición). Imágenes en disco: ruta relativa a la carpeta de la página (`Imágenes/a.png`, o `../Imágenes/a.png` si la imagen está en la carpeta superior).
+- Imágenes: una carpeta `Imágenes/` por cada nivel de carpeta (reemplaza al `adjuntos/` único por espacio). El sidebar las oculta junto con los CLAUDE.md salvo que se active el interruptor de «mostrar archivos de Claude» (se guarda en localStorage).
+- Panel de imágenes de la pizarra (botón de la barra): pestañas «En esta pizarra» (imágenes de sus bloques `file`) y «Todas» (las de la carpeta de la pizarra); se arrastran al lienzo, «+ Subir» y borrar.
+- Al borrar una imagen desde el panel, el aviso de uso cuenta las pizarras `.canvas` de la misma carpeta que la usan (no bloques ni otras carpetas).
+- Deshacer = solo lo último borrado, por sesión (`lastDeleted` en memoria; no sobrevive al cierre de la app).
+- Escala tipográfica ~12 % mayor, solo vía tokens `--text-*` en `src/styles/tokens.css`.
+- Sidebar izquierdo colapsable con Cmd/Ctrl+\, estado persistido.
 
 ## graphify
 
