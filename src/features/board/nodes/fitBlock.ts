@@ -24,3 +24,19 @@ export function fitBlockSize(
     height: Math.max(min.height, Math.min(FIT_MAX_HEIGHT, height)),
   };
 }
+
+/**
+ * Natural size of `content` (the one child that holds everything inside the scroll `area`), plus
+ * the area's padding. The height is the content's own, so the block can shrink as well as grow.
+ * The width never goes below the area's current width: it only grows when the content is wider.
+ */
+export function contentSize(area: HTMLElement, content: HTMLElement): { width: number; height: number } {
+  const cs = getComputedStyle(area);
+  const px = (v: string) => parseFloat(v) || 0;
+  const padX = px(cs.paddingLeft) + px(cs.paddingRight);
+  const padY = px(cs.paddingTop) + px(cs.paddingBottom);
+  return {
+    width: Math.max(area.clientWidth, content.scrollWidth + padX),
+    height: content.offsetHeight + padY,
+  };
+}

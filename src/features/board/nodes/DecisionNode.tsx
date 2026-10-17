@@ -2,19 +2,19 @@ import "./datagrid.css";
 import "./process.css";
 import "./decision.css";
 import type { NodeProps } from "@xyflow/react";
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { useBoardActions } from "../boardActions";
 import type { FlowNode } from "../boardModel";
 import { addOption, decisionView, removeOption, setOptionName, toggleChosen } from "./decisionData";
 import { BlockShell } from "./BlockShell";
 import { GlyphDecision } from "./glyphs";
 import { AutoText } from "./AutoText";
-import { fitBlockSize } from "./fitBlock";
+import { contentSize, fitBlockSize } from "./fitBlock";
 import { PointList } from "./PointList";
 import { useScrollable } from "./useScrollable";
 
 const MIN = { width: 280, height: 160 };
-const FIT_TITLE = "Ajustar el bloque al contenido de la tabla";
+const FIT_TITLE = "Ajustar el bloque al contenido de la decisión";
 const FIT_LABEL = "Ajustar el bloque al contenido";
 const quoted = (name: string, position: number) => (name.trim() ? `«${name}»` : String(position));
 
@@ -33,10 +33,13 @@ export function DecisionNode({ id, data, selected }: NodeProps<FlowNode>) {
   const { update } = useBoardActions();
   const view = useMemo(() => decisionView(data), [data]);
   const [scrollRef, scrollable] = useScrollable<HTMLDivElement>();
+  const contentRef = useRef<HTMLDivElement>(null);
   const stop = "nodrag nopan";
   // Resize the block to show all its content. Writes only when clicked.
   const fit = () => {
-    const size = fitBlockSize(scrollRef.current, MIN);
+    const area = scrollRef.current;
+    const content = contentRef.current;
+    const size = area && content && fitBlockSize(area, MIN, contentSize(area, content));
     if (size) update(id, size);
   };
 
@@ -53,6 +56,7 @@ export function DecisionNode({ id, data, selected }: NodeProps<FlowNode>) {
     >
       <div className="table-body">
         <div ref={scrollRef} className={scrollable ? `table-scroll dc-scroll ${stop} nowheel` : `table-scroll dc-scroll ${stop}`}>
+          <div ref={contentRef} className="fit-content">
           <AutoText
             className="dc-question"
             aria-label="Pregunta de la decisión"
@@ -122,6 +126,7 @@ export function DecisionNode({ id, data, selected }: NodeProps<FlowNode>) {
               onChange={(v) => update(id, { rationale: v })}
             />
           </label>
+          </div>
         </div>
         <div className="data-bar nodrag nopan">
           <button type="button" className="data-btn" onClick={() => update(id, addOption(data))}>

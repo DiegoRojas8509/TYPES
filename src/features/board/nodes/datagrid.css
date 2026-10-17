@@ -190,6 +190,9 @@ textarea.cell-input {
 .block-table .data-table {
   table-layout: auto;
 }
+.fit-content {
+  display: flow-root;
+}
 .data-btn-fit {
   margin-left: auto;
 }

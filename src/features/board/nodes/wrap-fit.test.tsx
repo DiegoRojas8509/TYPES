@@ -25,6 +25,7 @@ function measure(w: number, h: number) {
   const sizes = (el: HTMLElement, p: string): number => {
     if (el.classList.contains("block")) return p === "offsetWidth" ? 400 : p === "offsetHeight" ? 300 : 0;
     if (el.classList.contains("table-scroll")) return { clientWidth: 360, clientHeight: 200, scrollWidth: w, scrollHeight: h }[p] ?? 0;
+    if (el.classList.contains("fit-content")) return { scrollWidth: w, offsetHeight: h }[p] ?? 0;
     if (el.tagName === "TABLE") return { scrollWidth: w, offsetWidth: w, scrollHeight: h, offsetHeight: h }[p] ?? 0;
     return 0;
   };
@@ -88,6 +89,23 @@ describe("TableNode wrapping and fit", () => {
     measure(5000, 9000);
     fireEvent.click(fitBtn(container));
     expect(update).toHaveBeenCalledWith("n1", { width: 1400, height: 1600 });
+  });
+});
+
+describe("shrinking fit (decision and timeline)", () => {
+  it.each([
+    ["decision", make({ type: "decision", question: "q", options: [] }), "Ajustar el bloque al contenido de la decisión"],
+    ["timeline", make({ type: "timeline", items: [] }), "Ajustar el bloque al contenido de la línea de tiempo"],
+  ])("%s: shrinks the height, keeps the width when the content is narrower, block-specific title", (_n, node, title) => {
+    const { container } = render(board(node));
+    expect(fitBtn(container)).toHaveAttribute("title", title);
+    measure(200, 100); // content far smaller than the 360x200 viewport
+    fireEvent.click(fitBtn(container));
+    expect(update).toHaveBeenLastCalledWith("n1", { width: 400, height: 200 }); // 300 - 200 + 100
+    measure(200, 10);
+    fireEvent.click(fitBtn(container));
+    expect(update).toHaveBeenLastCalledWith("n1", { width: 400, height: expect.any(Number) });
+    expect(update.mock.lastCall![1].height).toBeGreaterThanOrEqual(110);
   });
 });
 

@@ -2,12 +2,12 @@ import "./datagrid.css";
 import "./process.css";
 import "./timeline.css";
 import type { NodeProps } from "@xyflow/react";
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { useBoardActions } from "../boardActions";
 import type { FlowNode } from "../boardModel";
 import { BlockShell } from "./BlockShell";
 import { AutoText } from "./AutoText";
-import { fitBlockSize } from "./fitBlock";
+import { contentSize, fitBlockSize } from "./fitBlock";
 import { GlyphTimeline } from "./glyphs";
 import { StatusMark } from "./StatusMark";
 import {
@@ -26,7 +26,7 @@ import { TitleInput } from "./TitleInput";
 import { useScrollable } from "./useScrollable";
 
 const MIN = { width: 260, height: 120 };
-const FIT_TITLE = "Ajustar el bloque al contenido de la tabla";
+const FIT_TITLE = "Ajustar el bloque al contenido de la línea de tiempo";
 const FIT_LABEL = "Ajustar el bloque al contenido";
 const STATUS_LABEL: Record<Status, string> = { hecho: "Hecho", "en curso": "En curso", pendiente: "Pendiente" };
 /** «title» for button names, or the 1-based position when the item has no title yet. */
@@ -46,10 +46,13 @@ export function TimelineNode({ id, data, selected }: NodeProps<FlowNode>) {
   const rows = useMemo(() => timelineView(data), [data]);
   const { done, total } = timelineProgress(rows);
   const [scrollRef, scrollable] = useScrollable<HTMLDivElement>();
+  const contentRef = useRef<HTMLDivElement>(null);
 
   // Resize the block to show all its content. Writes only when clicked.
   const fit = () => {
-    const size = fitBlockSize(scrollRef.current, MIN);
+    const area = scrollRef.current;
+    const content = contentRef.current;
+    const size = area && content && fitBlockSize(area, MIN, contentSize(area, content));
     if (size) update(id, size);
   };
   const write = (items: unknown[]) => update(id, { items });
@@ -69,6 +72,7 @@ export function TimelineNode({ id, data, selected }: NodeProps<FlowNode>) {
     >
       <div className="table-body">
         <div ref={scrollRef} className={scrollable ? "table-scroll nodrag nopan nowheel" : "table-scroll nodrag nopan"}>
+          <div ref={contentRef} className="fit-content">
           {total > 0 && (
             <div className="tl-progress">
               <span className="tl-progress-bar" aria-hidden="true">
@@ -170,6 +174,7 @@ export function TimelineNode({ id, data, selected }: NodeProps<FlowNode>) {
               );
             })}
           </ol>
+          </div>
         </div>
         <div className="data-bar nodrag nopan">
           <button type="button" className="data-btn" onClick={() => write(addItem(data, todayISO()))}>
