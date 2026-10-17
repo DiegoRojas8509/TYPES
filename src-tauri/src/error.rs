@@ -16,6 +16,8 @@ pub enum AppError {
     Invalid(String),
     /// Underlying filesystem or settings error.
     Io(String),
+    /// Something already exists at the destination; the text is the full Spanish message.
+    AlreadyExists(String),
     /// No Claude Code binary could be found or started.
     ClaudeNotFound,
 }
@@ -28,6 +30,7 @@ impl AppError {
             AppError::NotFound(_) => "not_found",
             AppError::Invalid(_) => "invalid",
             AppError::Io(_) => "io",
+            AppError::AlreadyExists(_) => "exists",
             AppError::ClaudeNotFound => "claude_not_found",
         }
     }
@@ -39,6 +42,7 @@ impl AppError {
             AppError::NotFound(what) => format!("No se encontró: {what}."),
             AppError::Invalid(why) => format!("Operación no válida: {why}."),
             AppError::Io(e) => format!("No se pudo completar la operación: {e}"),
+            AppError::AlreadyExists(msg) => msg.clone(),
             AppError::ClaudeNotFound => {
                 "No encuentro Claude Code. Instálalo e inicia sesión, o indica su ruta en Ajustes.".into()
             }

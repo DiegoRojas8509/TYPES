@@ -80,3 +80,18 @@ Reglas:
 - Para ORGANIZAR una pizarra solo cambia `x`, `y`, `width` y `height`, y crea nodos `group` para agrupar. No toques el contenido.
 - Diego puede estar editando la misma pizarra: mantén tus cambios mínimos y edita solo los nodos necesarios, sin reescribir el archivo completo.
 "#;
+
+// --- Migration of workspaces created with the old `adjuntos/` templates ---
+// Each OLD_* is a line exactly as the previous templates wrote it; NEW_* is its replacement.
+pub const OLD_ROOT_IMAGES_LINE: &str = "- Las imágenes y archivos adjuntos viven en la carpeta `adjuntos/` de cada espacio. Referéncialos con rutas relativas, por ejemplo `![molde](adjuntos/molde.png)`.";
+pub const NEW_ROOT_IMAGES_LINE: &str = "- Las imágenes viven en la carpeta `Imágenes/` de cada carpeta (cada nivel tiene la suya, junto a las pizarras y páginas que las usan). Referéncialas con rutas relativas a la carpeta del archivo, por ejemplo `![molde](Imágenes/molde.png)`.";
+pub const OLD_SPACE_IMAGES_LINE: &str = "Completa estas secciones. Claude las lee antes de analizar, costear o generar reportes. Sigue también las reglas de formato del `CLAUDE.md` de la carpeta superior: la información vive sobre todo en pizarras (`.canvas`, ver la sección «Pizarras» de ese archivo) y, para texto largo, en páginas en Markdown con tablas para los datos, salidas visuales en HTML autocontenido, adjuntos en `adjuntos/`, y fórmulas y supuestos visibles en cada cálculo.";
+pub const NEW_SPACE_IMAGES_LINE: &str = "Completa estas secciones. Claude las lee antes de analizar, costear o generar reportes. Sigue también las reglas de formato del `CLAUDE.md` de la carpeta superior: la información vive sobre todo en pizarras (`.canvas`, ver la sección «Pizarras» de ese archivo) y, para texto largo, en páginas en Markdown con tablas para los datos, salidas visuales en HTML autocontenido, imágenes en `Imágenes/` de la misma carpeta, y fórmulas y supuestos visibles en cada cálculo.";
+pub const OLD_BOARD_IMAGES_LINE: &str = "- Las imágenes viven en `adjuntos/` y se referencian con ruta relativa a la carpeta de la pizarra, por ejemplo `adjuntos/molde.png` (o `../adjuntos/molde.png` si la pizarra está en una subcarpeta).";
+pub const NEW_BOARD_IMAGES_LINE: &str = "- Las imágenes viven en la carpeta `Imágenes/` de la propia carpeta de la pizarra (no en la de un nivel superior) y se referencian con ruta relativa a esa carpeta, por ejemplo `Imágenes/molde.png`.";
+
+pub const LINE_MIGRATIONS: [(&str, &str); 3] = [
+    (OLD_ROOT_IMAGES_LINE, NEW_ROOT_IMAGES_LINE),
+    (OLD_SPACE_IMAGES_LINE, NEW_SPACE_IMAGES_LINE),
+    (OLD_BOARD_IMAGES_LINE, NEW_BOARD_IMAGES_LINE),
+];

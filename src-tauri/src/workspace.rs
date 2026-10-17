@@ -172,7 +172,40 @@ pub fn ensure_root(root: &Path) -> Result<()> {
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
         Err(e) => return Err(e.into()),
     }
-    ensure_boards_section(root)
+    ensure_boards_section(root)?;
+    migrate_old_image_lines(root);
+    Ok(())
+}
+
+/// Rewrites, in the root CLAUDE.md and in each top-level space's CLAUDE.md, only the
+/// lines that match byte for byte what the old templates wrote about `adjuntos/`.
+/// Any other line (including ones Diego edited) is kept; idempotent; errors are ignored
+/// because this is a best-effort courtesy that must never block startup.
+fn migrate_old_image_lines(root: &Path) {
+    let mut files = vec![root.join("CLAUDE.md")];
+    if let Ok(entries) = std::fs::read_dir(root) {
+        for e in entries.flatten() {
+            if e.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                files.push(e.path().join("CLAUDE.md"));
+            }
+        }
+    }
+    for file in files {
+        let Ok(text) = std::fs::read_to_string(&file) else { continue };
+        let migrated = text
+            .split('\n')
+            .map(|line| {
+                crate::templates::LINE_MIGRATIONS
+                    .iter()
+                    .find(|(old, _)| *old == line)
+                    .map_or(line, |(_, new)| *new)
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        if migrated != text {
+            let _ = std::fs::write(&file, migrated);
+        }
+    }
 }
 
 /// Appends the `## Pizarras` section to the root CLAUDE.md when it is missing.
@@ -372,7 +405,12 @@ fn system_trash(p: &Path) -> Result<PathBuf> {
 
 fn copy_recursive(from: &Path, to: &Path) -> std::io::Result<()> {
     let md = std::fs::symlink_metadata(from)?;
-    if md.is_dir() {
+    if md.file_type().is_symlink() {
+        #[cfg(unix)]
+        return std::os::unix::fs::symlink(std::fs::read_link(from)?, to);
+        #[cfg(not(unix))]
+        return Err(std::io::Error::other("enlace simbólico no soportado"));
+    } else if md.is_dir() {
         std::fs::create_dir(to)?;
         for e in std::fs::read_dir(from)? {
             let e = e?;
@@ -384,16 +422,32 @@ fn copy_recursive(from: &Path, to: &Path) -> std::io::Result<()> {
     }
 }
 
+fn is_cross_device(e: &std::io::Error) -> bool {
+    e.kind() == std::io::ErrorKind::CrossesDevices || e.raw_os_error() == Some(18)
+}
+
 fn move_path(from: &Path, to: &Path) -> Result<()> {
-    if std::fs::rename(from, to).is_ok() {
-        return Ok(());
+    match std::fs::rename(from, to) {
+        Ok(()) => Ok(()),
+        Err(e) if is_cross_device(&e) => move_after_cross_device(from, to),
+        Err(e) => Err(e.into()),
     }
-    // Probably a different volume: copy, then remove the source only if the copy worked.
+}
+
+/// Copy, then remove the source only if the copy worked. If `to` already existed or
+/// appeared meanwhile, it is left untouched.
+fn move_after_cross_device(from: &Path, to: &Path) -> Result<()> {
+    if is_taken(to) {
+        return Err(AppError::AlreadyExists("Ya existe el destino; no lo sobrescribo.".into()));
+    }
     if let Err(e) = copy_recursive(from, to) {
-        let _ = if to.is_dir() { std::fs::remove_dir_all(to) } else { std::fs::remove_file(to) };
+        // `to` did not exist a moment ago, so whatever is there is our partial copy.
+        if !matches!(e.kind(), std::io::ErrorKind::AlreadyExists) {
+            let _ = if to.is_dir() { std::fs::remove_dir_all(to) } else { std::fs::remove_file(to) };
+        }
         return Err(e.into());
     }
-    if from.is_dir() {
+    if std::fs::symlink_metadata(from)?.is_dir() {
         std::fs::remove_dir_all(from)?;
     } else {
         std::fs::remove_file(from)?;
@@ -434,7 +488,7 @@ pub fn restore_entry_in(root: &Path, original: &str, trashed: &str) -> Result<St
     let dest = resolve(root, &join_rel(&parts))?;
     let src = validate_trashed(trashed)?;
     if is_taken(&dest) {
-        return Err(AppError::Invalid(format!("Ya existe «{name}»; no la sobrescribo.")));
+        return Err(AppError::AlreadyExists(format!("Ya existe «{name}»; no la sobrescribo.")));
     }
     if let Some(parent) = dest.parent() {
         std::fs::create_dir_all(parent)?;
@@ -444,14 +498,16 @@ pub fn restore_entry_in(root: &Path, original: &str, trashed: &str) -> Result<St
 }
 
 /// Returns `<root>/<dir>/Imágenes` (created when `create`) and its workspace-relative path.
+/// The image folder itself is resolved too, so a symlinked `Imágenes` cannot leave the root.
 fn images_dir(root: &Path, dir: &str, create: bool) -> Result<(PathBuf, String)> {
     let parts = rel_parts(dir)?;
-    let base = resolve_dir(root, &join_rel(&parts))?;
-    let images = base.join(IMAGES_DIR);
+    resolve_dir(root, &join_rel(&parts))?;
+    let rel = child_rel(&parts, IMAGES_DIR);
+    let images = resolve(root, &rel)?;
     if create {
         std::fs::create_dir_all(&images)?;
     }
-    Ok((images, child_rel(&parts, IMAGES_DIR)))
+    Ok((images, rel))
 }
 
 pub fn save_image_in(root: &Path, dir: &str, file_name: &str, bytes: &[u8]) -> Result<String> {
@@ -1008,7 +1064,7 @@ mod tests {
         fs::write(root.join(&page), "nuevo").unwrap();
         fs::write(trash.join("Notas.md"), "viejo").unwrap();
         let err = restore_entry_in(&root, &page, &trash.join("Notas.md").to_string_lossy()).unwrap_err();
-        assert!(err.message().contains("Ya existe «Notas.md»; no la sobrescribo."), "{}", err.message());
+        assert_eq!(err.message(), "Ya existe «Notas.md»; no la sobrescribo.");
         assert_eq!(fs::read_to_string(root.join(&page)).unwrap(), "nuevo");
         assert_eq!(fs::read_to_string(trash.join("Notas.md")).unwrap(), "viejo");
     }
@@ -1037,5 +1093,126 @@ mod tests {
         assert!(err.message().contains("papelera"), "{}", err.message());
         assert!(restore_entry_in(&root, "p.md", &trash.to_string_lossy()).is_err());
         assert!(!root.join("p.md").exists());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn symlinked_images_dir_cannot_escape_the_workspace() {
+        let (d, root) = ws();
+        create_space_in(&root, "Ropa").unwrap();
+        let outside = d.path().join("outside");
+        fs::create_dir(&outside).unwrap();
+        fs::write(outside.join("leak.png"), "x").unwrap();
+        std::os::unix::fs::symlink(&outside, root.join("Ropa").join(IMAGES_DIR)).unwrap();
+        assert!(matches!(save_image_in(&root, "Ropa", "a.png", &[1]), Err(AppError::OutsideWorkspace)));
+        assert!(matches!(list_images_in(&root, "Ropa"), Err(AppError::OutsideWorkspace)));
+        let src = d.path().join("s.jpg");
+        fs::write(&src, "i").unwrap();
+        assert!(matches!(
+            import_files_in(&root, "Ropa", &[src.to_string_lossy().into()]),
+            Err(AppError::OutsideWorkspace)
+        ));
+        assert!(!outside.join("a.png").exists() && !outside.join("s.jpg").exists());
+    }
+
+    #[test]
+    fn restore_exists_error_has_exact_message_and_kind() {
+        let (d, root) = ws();
+        let trash = fake_trash(&d);
+        create_space_in(&root, "Ropa").unwrap();
+        let page = create_page_in(&root, "Ropa", "Notas").unwrap();
+        fs::write(trash.join("Notas.md"), "v").unwrap();
+        let err = restore_entry_in(&root, &page, &trash.join("Notas.md").to_string_lossy()).unwrap_err();
+        assert_eq!(err.kind(), "exists");
+        assert_eq!(err.message(), "Ya existe «Notas.md»; no la sobrescribo.");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn move_fallback_copies_symlinks_as_symlinks() {
+        let d = tempfile::tempdir().unwrap();
+        let src = d.path().join("src");
+        fs::create_dir(&src).unwrap();
+        fs::write(d.path().join("secret.txt"), "s").unwrap();
+        std::os::unix::fs::symlink(d.path().join("secret.txt"), src.join("link")).unwrap();
+        fs::write(src.join("f.txt"), "f").unwrap();
+        let dst = d.path().join("dst");
+        copy_recursive(&src, &dst).unwrap();
+        assert!(fs::symlink_metadata(dst.join("link")).unwrap().file_type().is_symlink());
+        assert_eq!(fs::read_to_string(dst.join("f.txt")).unwrap(), "f");
+    }
+
+    #[test]
+    fn move_path_returns_non_cross_device_errors_untouched() {
+        let d = tempfile::tempdir().unwrap();
+        let missing = d.path().join("nada");
+        let err = move_path(&missing, &d.path().join("x")).unwrap_err();
+        assert!(matches!(err, AppError::NotFound(_)), "{err:?}");
+        assert!(!d.path().join("x").exists());
+    }
+
+    #[test]
+    fn copy_fallback_keeps_a_destination_that_appeared_meanwhile() {
+        let d = tempfile::tempdir().unwrap();
+        let src = d.path().join("src");
+        fs::create_dir(&src).unwrap();
+        let to = d.path().join("to");
+        fs::create_dir(&to).unwrap();
+        fs::write(to.join("mine.txt"), "m").unwrap();
+        assert!(move_after_cross_device(&src, &to).is_err());
+        assert_eq!(fs::read_to_string(to.join("mine.txt")).unwrap(), "m");
+        assert!(src.exists());
+    }
+
+    const OLD_ROOT_LINE: &str = "- Las imágenes y archivos adjuntos viven en la carpeta `adjuntos/` de cada espacio. Referéncialos con rutas relativas, por ejemplo `![molde](adjuntos/molde.png)`.";
+    const OLD_BOARD_LINE: &str = "- Las imágenes viven en `adjuntos/` y se referencian con ruta relativa a la carpeta de la pizarra, por ejemplo `adjuntos/molde.png` (o `../adjuntos/molde.png` si la pizarra está en una subcarpeta).";
+
+    #[test]
+    fn migration_replaces_only_exact_old_lines_and_is_idempotent() {
+        let (_d, root) = ws();
+        create_space_in(&root, "Ropa").unwrap();
+        let old_root = format!("# Mío\n{OLD_ROOT_LINE}\notra línea\n## Pizarras\n{OLD_BOARD_LINE}\nfin");
+        fs::write(root.join("CLAUDE.md"), &old_root).unwrap();
+        ensure_root(&root).unwrap();
+        let got = fs::read_to_string(root.join("CLAUDE.md")).unwrap();
+        let expected = old_root
+            .replace(OLD_ROOT_LINE, crate::templates::NEW_ROOT_IMAGES_LINE)
+            .replace(OLD_BOARD_LINE, crate::templates::NEW_BOARD_IMAGES_LINE);
+        assert_eq!(got, expected);
+        assert!(!got.contains("adjuntos/"));
+        ensure_root(&root).unwrap();
+        assert_eq!(fs::read_to_string(root.join("CLAUDE.md")).unwrap(), expected);
+    }
+
+    #[test]
+    fn migration_updates_space_claude_md_and_leaves_edited_lines_alone() {
+        let (_d, root) = ws();
+        create_space_in(&root, "Ropa").unwrap();
+        create_space_in(&root, "Tela").unwrap();
+        let old_space = crate::templates::OLD_SPACE_IMAGES_LINE;
+        fs::write(root.join("Ropa/CLAUDE.md"), format!("{old_space}\nrest")).unwrap();
+        let edited = format!("{} (mi cambio)\n", OLD_ROOT_LINE);
+        fs::write(root.join("Tela/CLAUDE.md"), &edited).unwrap();
+        let plain = "sin nada viejo\r\nlinea";
+        fs::create_dir(root.join("Otra")).unwrap();
+        fs::write(root.join("Otra/CLAUDE.md"), plain).unwrap();
+        ensure_root(&root).unwrap();
+        assert_eq!(
+            fs::read_to_string(root.join("Ropa/CLAUDE.md")).unwrap(),
+            format!("{}\nrest", crate::templates::NEW_SPACE_IMAGES_LINE)
+        );
+        assert_eq!(fs::read_to_string(root.join("Tela/CLAUDE.md")).unwrap(), edited);
+        assert_eq!(fs::read_to_string(root.join("Otra/CLAUDE.md")).unwrap(), plain);
+    }
+
+    #[test]
+    fn new_templates_contain_the_migration_target_lines() {
+        use crate::templates::*;
+        assert!(ROOT_CLAUDE_MD.lines().any(|l| l == NEW_ROOT_IMAGES_LINE));
+        assert!(SPACE_CLAUDE_MD.lines().any(|l| l == NEW_SPACE_IMAGES_LINE));
+        assert!(BOARDS_SECTION.lines().any(|l| l == NEW_BOARD_IMAGES_LINE));
+        for (old, _) in LINE_MIGRATIONS {
+            assert!(!ROOT_CLAUDE_MD.contains(old) && !SPACE_CLAUDE_MD.contains(old) && !BOARDS_SECTION.contains(old));
+        }
     }
 }
