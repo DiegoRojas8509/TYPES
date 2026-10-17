@@ -1,0 +1,103 @@
+/* Design tokens. Light by default, dark when the system asks for it.
+   Components use only these variables; never raw colours. */
+:root {
+  color-scheme: light dark;
+
+  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+
+  --text-xs: 12.5px;
+  --text-sm: 13.5px;
+  --text-md: 14.5px;
+  --text-lg: 17px;
+  --text-xl: 22px;
+
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 8px;
+  --space-4: 12px;
+  --space-5: 16px;
+  --space-6: 24px;
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+
+  --row-h: 29px;
+  --header-h: 42px;
+  --control-h: 31px;
+  --icon-btn: 24px;
+  --sidebar-w: 290px;
+  --chat-w: 420px;
+
+  /* surfaces */
+  --bg: #ffffff;
+  --bg-side: #f8f6f3;
+  --bg-raised: #ffffff;
+  --bg-hover: rgba(55, 53, 47, 0.07);
+  --bg-selected: rgba(55, 53, 47, 0.12);
+  --border: #e7e4de;
+  --border-strong: #d2cec6;
+
+  /* text */
+  --text: #37352f;
+  --text-muted: #787774;
+  --text-faint: #a5a39d;
+
+  /* accents: burnt orange from the app icon. --accent is a FILL (buttons, bars,
+     focus rings); --accent-ink is the same family darkened so it passes 4.5:1 as TEXT. */
+  --accent: #e0762a;
+  --accent-ink: #b2591a;
+  --accent-text: #1a1411;
+  --danger: #c4392d;
+  --danger-bg: #fdecea;
+  --info-bg: #fbf1e6;
+
+  --shadow-pop: 0 4px 18px rgba(15, 15, 15, 0.14), 0 0 0 1px rgba(15, 15, 15, 0.06);
+  --scrim: rgba(15, 15, 15, 0.32);
+
+  /* whiteboard blocks: two-part shadows (tight edge + soft ambient), resting and selected */
+  --shadow-card: 0 1px 2px rgba(15, 15, 15, 0.07), 0 3px 10px rgba(15, 15, 15, 0.05);
+  --shadow-card-lift: 0 2px 4px rgba(15, 15, 15, 0.08), 0 10px 24px rgba(15, 15, 15, 0.1);
+  /* block accents = the JSON Canvas preset colours 1..6 (red, orange, yellow, green, cyan, purple) */
+  --block-1: #d4493b;
+  --block-2: #e0762a;
+  --block-3: #b8901a;
+  --block-4: #3f8f55;
+  --block-5: #2a8fa6;
+  --block-6: #8157c0;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1a1816;
+    --bg-side: #211e1b;
+    --bg-raised: #262321;
+    --bg-hover: rgba(255, 255, 255, 0.07);
+    --bg-selected: rgba(255, 255, 255, 0.13);
+    --border: #322e2b;
+    --border-strong: #474240;
+
+    --text: #e6e5e1;
+    --text-muted: #9b9a96;
+    --text-faint: #6f6e6a;
+
+    --accent: #e0762a;
+    --accent-ink: #f0a050;
+    --accent-text: #1a1411;
+    --danger: #f0867b;
+    --danger-bg: #3a2220;
+    --info-bg: #2d2219;
+
+    --shadow-pop: 0 4px 18px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.08);
+    --scrim: rgba(0, 0, 0, 0.55);
+
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.35), 0 3px 10px rgba(0, 0, 0, 0.25);
+    --shadow-card-lift: 0 2px 4px rgba(0, 0, 0, 0.4), 0 10px 24px rgba(0, 0, 0, 0.4);
+    --block-1: #f0867b;
+    --block-2: #f0a050;
+    --block-3: #e3c458;
+    --block-4: #7ac488;
+    --block-5: #62c3d6;
+    --block-6: #b494e6;
+  }
+}

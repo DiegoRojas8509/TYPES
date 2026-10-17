@@ -1,0 +1,13 @@
+node_modules
+dist
+src-tauri/target
+src-tauri/gen
+.DS_Store
+graphify-out
+.claude/skills
+*.log
+*.local
+
+# Datos de negocio de Diego (nunca al repo público)
+espacios/
+.superpowers/

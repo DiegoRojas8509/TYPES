@@ -1,0 +1,35 @@
+/* Process blocks: timeline and decision. Same card language as the other blocks;
+   colour only reinforces what shape and words already say. */
+
+/* Small icon buttons (move, delete): out of the way until the row is hovered or focused. */
+.proc-btn {
+  display: grid;
+  place-content: center;
+  width: 20px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--text-md);
+  line-height: 1;
+  cursor: pointer;
+}
+.proc-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.proc-btn.is-danger:hover:not(:disabled) {
+  color: var(--danger);
+}
+.proc-btn:disabled {
+  cursor: default;
+  opacity: 0.3;
+}
+.proc-btn:focus-visible,
+.dc-choose:focus-visible,
+.dc-add:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}

@@ -1,0 +1,230 @@
+/* Markdown editor. Only tokens, no raw colours. */
+.editor {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.editor .pane-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.save-status {
+  flex: none;
+  font-size: var(--text-sm);
+  font-weight: 400;
+  color: var(--text-muted);
+}
+.save-status.is-dirty,
+.save-status.is-saving {
+  color: var(--text-faint);
+}
+.save-status.is-conflict {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex: none;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--text-sm);
+}
+.banner > span {
+  flex: 1;
+}
+.banner-warn {
+  background: var(--danger-bg);
+}
+.banner-info {
+  background: var(--info-bg);
+}
+
+.editor-scroll {
+  padding: var(--space-6) var(--space-5) 30vh;
+}
+.editor-content {
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.prose {
+  outline: none;
+  font-size: var(--text-lg);
+  line-height: 1.6;
+  min-height: 50vh;
+  overflow-wrap: anywhere;
+}
+.prose > * + * {
+  margin-top: var(--space-3);
+}
+.prose h1,
+.prose h2,
+.prose h3 {
+  line-height: 1.25;
+  margin-bottom: 0;
+  margin-top: var(--space-5);
+}
+.prose h1 {
+  font-size: 1.9em;
+}
+.prose h2 {
+  font-size: 1.45em;
+}
+.prose h3 {
+  font-size: 1.15em;
+}
+.prose p {
+  margin: 0;
+}
+.prose p + p {
+  margin-top: var(--space-3);
+}
+.prose ul,
+.prose ol {
+  padding-left: 1.5em;
+  margin: 0;
+}
+.prose li > p {
+  margin: 0;
+}
+.prose ul[data-type="taskList"] {
+  list-style: none;
+  padding-left: 0.2em;
+}
+.prose ul[data-type="taskList"] li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+.prose ul[data-type="taskList"] li > label {
+  flex: none;
+  margin-top: 0.28em;
+}
+.prose ul[data-type="taskList"] li > div {
+  flex: 1;
+}
+.prose ul[data-type="taskList"] li[data-checked="true"] > div {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+.prose a {
+  color: var(--accent-ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.prose code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  padding: 1px 4px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-hover);
+}
+.prose pre {
+  font-family: var(--font-mono);
+  font-size: var(--text-md);
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--bg-side);
+  border: 1px solid var(--border);
+  overflow-x: auto;
+}
+.prose pre code {
+  padding: 0;
+  background: none;
+}
+.prose blockquote {
+  margin-left: 0;
+  padding-left: var(--space-4);
+  border-left: 3px solid var(--border-strong);
+  color: var(--text-muted);
+}
+.prose hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: var(--space-5) 0;
+}
+.prose img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-sm);
+}
+.prose img.ProseMirror-selectednode {
+  outline: 2px solid var(--accent);
+}
+
+/* Tables are where the hard numbers live: dense, ruled, scrollable. */
+.prose .tableWrapper {
+  overflow-x: auto;
+  margin: var(--space-3) 0;
+}
+.prose table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: var(--text-md);
+  font-variant-numeric: tabular-nums;
+}
+.prose th,
+.prose td {
+  border: 1px solid var(--border);
+  padding: var(--space-2) var(--space-3);
+  min-width: 80px;
+  vertical-align: top;
+  text-align: left;
+  position: relative;
+}
+.prose th {
+  background: var(--bg-side);
+  font-weight: 600;
+}
+.prose td > p,
+.prose th > p {
+  margin: 0;
+}
+.prose .selectedCell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--bg-selected);
+  pointer-events: none;
+}
+
+/* Slash menu */
+.slash-menu {
+  position: fixed;
+  z-index: 40;
+  width: 264px;
+  max-height: 280px;
+  overflow-y: auto;
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-pop);
+  font-size: var(--text-md);
+}
+.slash-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  text-align: left;
+}
+.slash-item.is-selected,
+.slash-item:hover {
+  background: var(--bg-hover);
+}
+.slash-hint {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+.slash-empty {
+  padding: var(--space-3);
+  color: var(--text-muted);
+}

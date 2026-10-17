@@ -1,0 +1,170 @@
+/* Chart palette: dataviz categorical slots 1-6 (blue, orange, aqua, yellow, magenta, green),
+   validated against the card surface in light and dark. Light yellow/aqua/magenta fall
+   below 3:1 on white, so the legend, tooltips and the "Datos" grid always carry identity. */
+:root {
+  --chart-1: #2a78d6;
+  --chart-2: #eb6834;
+  --chart-3: #1baf7a;
+  --chart-4: #eda100;
+  --chart-5: #e87ba4;
+  --chart-6: #008300;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --chart-1: #3987e5;
+    --chart-2: #d95926;
+    --chart-3: #199e70;
+    --chart-4: #c98500;
+    --chart-5: #d55181;
+    --chart-6: #008300;
+  }
+}
+
+/* Chart */
+.chart-tools {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-3);
+  margin-left: auto;
+}
+.chart-kinds {
+  display: flex;
+  gap: 1px;
+  padding: 1px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.chart-kind {
+  display: grid;
+  place-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.chart-kind:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.chart-data-toggle {
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.chart-data-toggle:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.chart-data-toggle:focus-visible,
+.chart-kind:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.chart-kind[aria-pressed="true"],
+.chart-data-toggle[aria-pressed="true"] {
+  background: var(--bg-selected);
+  color: var(--text);
+}
+.block-chart .block-body {
+  display: flex;
+  flex-direction: column;
+}
+.chart-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  padding: var(--space-3) var(--space-4) var(--space-3) var(--space-3);
+}
+.chart-meta {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  padding: 0 0 var(--space-3) var(--space-3);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.chart-legend li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.chart-swatch {
+  display: inline-block;
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+.chart-swatch.is-line {
+  height: 2px;
+  width: 14px;
+  border-radius: 1px;
+}
+.chart-note {
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+}
+.chart-frame {
+  flex: 1;
+  min-height: 0;
+  font-size: var(--text-xs);
+}
+.chart-frame svg {
+  overflow: visible;
+}
+.chart-empty {
+  margin: 0;
+  padding: var(--space-5);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+.chart-tip {
+  min-width: 120px;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-pop);
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+.chart-tip-head {
+  margin-bottom: var(--space-2);
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.chart-tip-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.chart-tip-name {
+  flex: 1;
+  color: var(--text-muted);
+}
+.chart-tip-value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}

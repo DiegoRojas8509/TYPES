@@ -1,0 +1,51 @@
+/* HTML, image and fallback viewers. Tokens only, except the frame backdrop below. */
+.viewer {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+.viewer .pane-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.viewer-actions {
+  display: flex;
+  gap: var(--space-3);
+  flex: none;
+}
+.viewer-meta {
+  flex: none;
+  font-size: var(--text-sm);
+  font-weight: 400;
+  color: var(--text-muted);
+}
+.viewer-status {
+  padding: var(--space-5);
+  color: var(--text-muted);
+}
+/* Deliberate raw colour: generated pages bring their own styles and assume a white canvas,
+   so in dark mode a transparent frame would show dark text on a dark app. */
+.viewer-frame {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  border: 0;
+  background: #ffffff;
+}
+.image-stage {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--space-5);
+  background: var(--bg-side);
+  overflow: hidden;
+}
+.image-stage img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
