@@ -8,9 +8,14 @@ import type { FlowNode } from "../boardModel";
 import { addOption, decisionView, removeOption, setOptionName, toggleChosen } from "./decisionData";
 import { BlockShell } from "./BlockShell";
 import { GlyphDecision } from "./glyphs";
+import { AutoText } from "./AutoText";
+import { fitBlockSize } from "./fitBlock";
 import { PointList } from "./PointList";
 import { useScrollable } from "./useScrollable";
 
+const MIN = { width: 280, height: 160 };
+const FIT_TITLE = "Ajustar el bloque al contenido de la tabla";
+const FIT_LABEL = "Ajustar el bloque al contenido";
 const quoted = (name: string, position: number) => (name.trim() ? `«${name}»` : String(position));
 
 /**
@@ -29,6 +34,11 @@ export function DecisionNode({ id, data, selected }: NodeProps<FlowNode>) {
   const view = useMemo(() => decisionView(data), [data]);
   const [scrollRef, scrollable] = useScrollable<HTMLDivElement>();
   const stop = "nodrag nopan";
+  // Resize the block to show all its content. Writes only when clicked.
+  const fit = () => {
+    const size = fitBlockSize(scrollRef.current, MIN);
+    if (size) update(id, size);
+  };
 
   return (
     <BlockShell
@@ -37,19 +47,18 @@ export function DecisionNode({ id, data, selected }: NodeProps<FlowNode>) {
       title="Decisión"
       glyph={<GlyphDecision />}
       color={data.color}
-      minWidth={280}
-      minHeight={160}
+      minWidth={MIN.width}
+      minHeight={MIN.height}
       className="block-decision"
     >
       <div className="table-body">
         <div ref={scrollRef} className={scrollable ? `table-scroll dc-scroll ${stop} nowheel` : `table-scroll dc-scroll ${stop}`}>
-          <textarea
+          <AutoText
             className="dc-question"
             aria-label="Pregunta de la decisión"
             placeholder="¿Qué decidimos?"
-            rows={2}
             value={view.question}
-            onChange={(e) => update(id, { question: e.target.value })}
+            onChange={(v) => update(id, { question: v })}
           />
           {view.options.length === 0 && <p className="dc-empty">Sin opciones todavía. Agrega una con «+ opción».</p>}
           <div className="dc-options">
@@ -58,12 +67,13 @@ export function DecisionNode({ id, data, selected }: NodeProps<FlowNode>) {
               return (
                 <section key={i} className="dc-option" data-chosen={isChosen ? "true" : "false"} aria-label={`Opción ${i + 1}`}>
                   <div className="dc-opt-head">
-                    <input
+                    <AutoText
+                      singleLine
                       className="dc-name"
                       aria-label={`Nombre de la opción ${i + 1}`}
                       placeholder="Nombre"
                       value={opt.name}
-                      onChange={(e) => update(id, setOptionName(data, i, e.target.value))}
+                      onChange={(v) => update(id, setOptionName(data, i, v))}
                     />
                     <button
                       type="button"
@@ -104,19 +114,21 @@ export function DecisionNode({ id, data, selected }: NodeProps<FlowNode>) {
           )}
           <label className="dc-why">
             <span className="dc-label">Por qué</span>
-            <textarea
+            <AutoText
               className="dc-rationale"
               aria-label="Por qué"
               placeholder="La razón de la decisión"
-              rows={2}
               value={view.rationale}
-              onChange={(e) => update(id, { rationale: e.target.value })}
+              onChange={(v) => update(id, { rationale: v })}
             />
           </label>
         </div>
         <div className="data-bar nodrag nopan">
           <button type="button" className="data-btn" onClick={() => update(id, addOption(data))}>
             + opción
+          </button>
+          <button type="button" className="data-btn data-btn-fit" title={FIT_TITLE} aria-label={FIT_LABEL} onClick={fit}>
+            Ajustar
           </button>
         </div>
       </div>

@@ -169,3 +169,27 @@
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
+
+/* Table block: cells wrap and grow with their text (textarea sized in TableCell.tsx). */
+textarea.cell-input {
+  display: block;
+  resize: none;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+}
+.block-table .data-table th,
+.block-table .data-table td {
+  min-width: 96px;
+  vertical-align: top;
+}
+.block-table .data-table .row-tools {
+  min-width: 24px;
+}
+.block-table .data-table {
+  table-layout: auto;
+}
+.data-btn-fit {
+  margin-left: auto;
+}

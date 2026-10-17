@@ -4,11 +4,15 @@ import { useMemo, useRef, type KeyboardEvent } from "react";
 import { useBoardActions } from "../boardActions";
 import type { FlowNode } from "../boardModel";
 import { BlockShell } from "./BlockShell";
+import { AutoText } from "./AutoText";
+import { fitBlockSize } from "./fitBlock";
 import { GlyphTable } from "./glyphs";
 import { addColumn, addRow, deleteColumn, deleteRow, numericColumns, setCell, setHeader, tableLocks, tableView, type TablePatch } from "./tableData";
 import { TitleInput } from "./TitleInput";
 import { useScrollable } from "./useScrollable";
 
+const MIN_W = 200;
+const MIN_H = 110;
 const LOCKED_ROW = "Fila en otro formato; edítala desde el chat";
 const LOCKED_CELL = "Celda en otro formato; edítala desde el chat";
 
@@ -33,12 +37,22 @@ export function TableNode({ id, data, selected }: NodeProps<FlowNode>) {
 
   const write = (t: TablePatch) => update(id, { columns: t.columns, rows: t.rows });
 
-  // Enter moves to the cell below in the same column (the header counts as row 0).
-  const onKeyDown = (e: KeyboardEvent<HTMLInputElement>, row: number, col: number) => {
-    if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+  // Enter moves (Shift+Enter is a newline inside the cell) to the cell below in the same column (the header counts as row 0).
+  const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>, row: number, col: number) => {
+    if (e.key !== "Enter" || e.shiftKey || e.nativeEvent.isComposing) return;
     e.preventDefault();
-    const next = gridRef.current?.querySelector<HTMLInputElement>(`input[data-r="${row + 1}"][data-c="${col}"]`);
+    const next = gridRef.current?.querySelector<HTMLTextAreaElement>(`textarea[data-r="${row + 1}"][data-c="${col}"]`);
     next?.focus();
+  };
+
+  // Resize the block to the table's natural size. Writes only when clicked.
+  const fit = () => {
+    const grid = gridRef.current;
+    const size = grid && fitBlockSize(scrollRef.current, { width: MIN_W, height: MIN_H }, {
+      width: Math.max(grid.scrollWidth, grid.offsetWidth),
+      height: Math.max(grid.scrollHeight, grid.offsetHeight),
+    });
+    if (size) update(id, size);
   };
 
   const canDeleteColumn = view.columns.length > 1;
@@ -50,8 +64,8 @@ export function TableNode({ id, data, selected }: NodeProps<FlowNode>) {
       titleSlot={<TitleInput value={title} placeholder="Tabla" label="Título de la tabla" onChange={(t) => update(id, { title: t })} />}
       glyph={<GlyphTable />}
       color={data.color}
-      minWidth={200}
-      minHeight={110}
+      minWidth={MIN_W}
+      minHeight={MIN_H}
       className="block-table"
     >
       <div className="table-body">
@@ -62,7 +76,7 @@ export function TableNode({ id, data, selected }: NodeProps<FlowNode>) {
                 {view.columns.map((h, c) => (
                   <th key={c} className={numeric[c] ? "is-num" : undefined}>
                     <div className="cell-wrap">
-                      <input
+                      <AutoText
                         className="cell-input cell-head"
                         aria-label={`Encabezado de columna ${c + 1}`}
                         data-r={0}
@@ -71,7 +85,7 @@ export function TableNode({ id, data, selected }: NodeProps<FlowNode>) {
                         placeholder="Columna"
                         disabled={locks.headers[c]}
                         title={locks.headers[c] ? LOCKED_CELL : undefined}
-                        onChange={(e) => write(setHeader(data, c, e.target.value))}
+                        onChange={(v) => write(setHeader(data, c, v))}
                         onKeyDown={(e) => onKeyDown(e, 0, c)}
                       />
                       <button
@@ -95,7 +109,7 @@ export function TableNode({ id, data, selected }: NodeProps<FlowNode>) {
                 <tr key={r}>
                   {row.map((v, c) => (
                     <td key={c}>
-                      <input
+                      <AutoText
                         className={numeric[c] ? "cell-input is-num" : "cell-input"}
                         aria-label={`Fila ${r + 1}, columna ${c + 1}`}
                         data-r={r + 1}
@@ -103,7 +117,7 @@ export function TableNode({ id, data, selected }: NodeProps<FlowNode>) {
                         value={v}
                         disabled={locks.rows[r][c]}
                         title={locks.rows[r][c] ? (Array.isArray(rawRows[r]) ? LOCKED_CELL : LOCKED_ROW) : undefined}
-                        onChange={(e) => write(setCell(data, r, c, e.target.value))}
+                        onChange={(v) => write(setCell(data, r, c, v))}
                         onKeyDown={(e) => onKeyDown(e, r + 1, c)}
                       />
                     </td>
@@ -130,6 +144,15 @@ export function TableNode({ id, data, selected }: NodeProps<FlowNode>) {
           </button>
           <button type="button" className="data-btn" onClick={() => write(addColumn(data))}>
             + columna
+          </button>
+          <button
+            type="button"
+            className="data-btn data-btn-fit"
+            title="Ajustar el bloque al contenido de la tabla"
+            aria-label="Ajustar el bloque al contenido"
+            onClick={fit}
+          >
+            Ajustar
           </button>
         </div>
       </div>

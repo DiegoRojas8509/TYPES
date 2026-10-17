@@ -44,8 +44,8 @@ describe("registry", () => {
 describe("TableNode", () => {
   const table = (extra: Record<string, unknown> = {}) =>
     make({ type: "table", title: "Costos", columns: ["Concepto", "Valor"], rows: [["Tela", "12"], ["Hilo", "3"]], ...extra });
-  const cell = (c: HTMLElement, r: number, k: number) => c.querySelector(`input[aria-label="Fila ${r}, columna ${k}"]`) as HTMLInputElement;
-  const head = (c: HTMLElement, k: number) => c.querySelector(`input[aria-label="Encabezado de columna ${k}"]`) as HTMLInputElement;
+  const cell = (c: HTMLElement, r: number, k: number) => c.querySelector(`textarea[aria-label="Fila ${r}, columna ${k}"]`) as HTMLTextAreaElement;
+  const head = (c: HTMLElement, k: number) => c.querySelector(`textarea[aria-label="Encabezado de columna ${k}"]`) as HTMLTextAreaElement;
 
   it("renders the title, headers and cells", () => {
     const { container } = render(board(table()));
@@ -214,7 +214,7 @@ describe("TableNode", () => {
   it("never calls update on mount, select, focus or blur without a change", () => {
     const { container, rerender } = render(board(table()));
     rerender(board(table(), true));
-    for (const input of container.querySelectorAll("input")) {
+    for (const input of container.querySelectorAll("input, textarea")) {
       fireEvent.focus(input);
       fireEvent.blur(input);
     }

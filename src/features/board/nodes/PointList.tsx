@@ -1,3 +1,4 @@
+import { AutoText } from "./AutoText";
 import { addPoint, removePoint, setPoint, type Side } from "./decisionData";
 
 const LABEL: Record<Side, { head: string; mark: string; one: string; add: string }> = {
@@ -33,11 +34,12 @@ export function PointList({
             <span className="dc-mark" aria-hidden="true">
               {t.mark}
             </span>
-            <input
+            <AutoText
+              singleLine
               className="dc-point-input"
               aria-label={`Punto ${t.one} ${j + 1} de la opción ${index + 1}`}
               value={p}
-              onChange={(e) => onWrite(setPoint(data, index, side, j, e.target.value))}
+              onChange={(v) => onWrite(setPoint(data, index, side, j, v))}
             />
             <button
               type="button"

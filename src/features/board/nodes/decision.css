@@ -5,6 +5,9 @@
 .dc-question,
 .dc-rationale {
   display: block;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   width: 100%;
   padding: var(--space-2) var(--space-3);
   border: 0;
@@ -76,12 +79,17 @@
 }
 .dc-opt-head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--space-2);
 }
 .dc-name {
   flex: 1;
   min-width: 0;
+  resize: none;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
   margin-left: calc(var(--space-3) * -1);
   padding: 2px var(--space-3);
   border: 0;
@@ -156,7 +164,7 @@
 }
 .dc-point {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--space-2);
 }
 .dc-mark {
@@ -168,6 +176,11 @@
 .dc-point-input {
   flex: 1;
   min-width: 0;
+  resize: none;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
   padding: 2px var(--space-2);
   border: 0;
   border-radius: var(--radius-sm);

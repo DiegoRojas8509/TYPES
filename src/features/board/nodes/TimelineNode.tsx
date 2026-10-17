@@ -6,6 +6,8 @@ import { useMemo } from "react";
 import { useBoardActions } from "../boardActions";
 import type { FlowNode } from "../boardModel";
 import { BlockShell } from "./BlockShell";
+import { AutoText } from "./AutoText";
+import { fitBlockSize } from "./fitBlock";
 import { GlyphTimeline } from "./glyphs";
 import { StatusMark } from "./StatusMark";
 import {
@@ -23,6 +25,9 @@ import {
 import { TitleInput } from "./TitleInput";
 import { useScrollable } from "./useScrollable";
 
+const MIN = { width: 260, height: 120 };
+const FIT_TITLE = "Ajustar el bloque al contenido de la tabla";
+const FIT_LABEL = "Ajustar el bloque al contenido";
 const STATUS_LABEL: Record<Status, string> = { hecho: "Hecho", "en curso": "En curso", pendiente: "Pendiente" };
 /** «title» for button names, or the 1-based position when the item has no title yet. */
 const quoted = (title: string, position: number) => (title.trim() ? `«${title}»` : String(position));
@@ -42,6 +47,11 @@ export function TimelineNode({ id, data, selected }: NodeProps<FlowNode>) {
   const { done, total } = timelineProgress(rows);
   const [scrollRef, scrollable] = useScrollable<HTMLDivElement>();
 
+  // Resize the block to show all its content. Writes only when clicked.
+  const fit = () => {
+    const size = fitBlockSize(scrollRef.current, MIN);
+    if (size) update(id, size);
+  };
   const write = (items: unknown[]) => update(id, { items });
   const edit = (i: number, field: ItemField, value: string) => write(setItemField(data, i, field, value));
 
@@ -53,8 +63,8 @@ export function TimelineNode({ id, data, selected }: NodeProps<FlowNode>) {
       titleSlot={<TitleInput value={title} placeholder="Línea de tiempo" label="Título de la línea de tiempo" onChange={(t) => update(id, { title: t })} />}
       glyph={<GlyphTimeline />}
       color={data.color}
-      minWidth={260}
-      minHeight={120}
+      minWidth={MIN.width}
+      minHeight={MIN.height}
       className="block-timeline"
     >
       <div className="table-body">
@@ -79,28 +89,30 @@ export function TimelineNode({ id, data, selected }: NodeProps<FlowNode>) {
                   </span>
                   <div className="tl-main">
                     <div className="tl-line">
-                      <input
+                      <AutoText
+                        singleLine
                         className="tl-input tl-date"
                         aria-label={`Fecha del avance ${i + 1}`}
                         placeholder="Fecha"
-                        size={10}
                         value={row.date}
-                        onChange={(e) => edit(i, "date", e.target.value)}
+                        onChange={(v) => edit(i, "date", v)}
                       />
-                      <input
+                      <AutoText
+                        singleLine
                         className="tl-input tl-title"
                         aria-label={`Título del avance ${i + 1}`}
                         placeholder="¿Qué pasó o qué falta?"
                         value={row.title}
-                        onChange={(e) => edit(i, "title", e.target.value)}
+                        onChange={(v) => edit(i, "title", v)}
                       />
                     </div>
-                    <input
+                    <AutoText
+                      singleLine
                       className="tl-input tl-detail"
                       aria-label={`Detalle del avance ${i + 1}`}
                       placeholder="Detalle"
                       value={row.detail}
-                      onChange={(e) => edit(i, "detail", e.target.value)}
+                      onChange={(v) => edit(i, "detail", v)}
                     />
                     <div className="tl-status-row">
                       <div className="tl-status" role="radiogroup" aria-label={`Estado del avance ${i + 1}`}>
@@ -162,6 +174,9 @@ export function TimelineNode({ id, data, selected }: NodeProps<FlowNode>) {
         <div className="data-bar nodrag nopan">
           <button type="button" className="data-btn" onClick={() => write(addItem(data, todayISO()))}>
             + avance
+          </button>
+          <button type="button" className="data-btn data-btn-fit" title={FIT_TITLE} aria-label={FIT_LABEL} onClick={fit}>
+            Ajustar
           </button>
         </div>
       </div>

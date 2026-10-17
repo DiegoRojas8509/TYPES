@@ -82,7 +82,7 @@
 }
 .tl-line {
   display: flex;
-  align-items: baseline;
+  align-items: flex-start;
   gap: var(--space-2);
 }
 .tl-input {
@@ -93,7 +93,11 @@
   background: transparent;
   color: var(--text);
   font: inherit;
-  text-overflow: ellipsis;
+  line-height: 1.4;
+  resize: none;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .tl-input:hover {
   background: var(--bg-hover);
@@ -108,7 +112,7 @@
 }
 .tl-date {
   flex: none;
-  width: 10ch;
+  width: 12ch;
   margin-left: calc(var(--space-3) * -1);
   color: var(--text-muted);
   font-size: var(--text-sm);
@@ -124,6 +128,7 @@
   text-decoration-color: var(--text-faint);
 }
 .tl-detail {
+  width: 100%;
   margin-left: calc(var(--space-3) * -1);
   color: var(--text-muted);
   font-size: var(--text-sm);
