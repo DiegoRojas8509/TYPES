@@ -1,0 +1,131 @@
+/* Image panel: overlays the right edge of the board area, below the toolbar. */
+.image-panel-toggle {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  padding: 0;
+}
+.image-panel-toggle[aria-pressed="true"] {
+  background: var(--bg-selected);
+}
+.image-panel {
+  position: absolute;
+  top: 38px;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  width: 280px;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-raised);
+  border-left: 1px solid var(--border);
+  box-shadow: var(--shadow-pop);
+  font-weight: 400;
+}
+.image-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+.image-tabs {
+  display: flex;
+  gap: var(--space-1);
+}
+.image-tab {
+  height: 26px;
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+.image-tab:hover {
+  background: var(--bg-hover);
+}
+.image-tab[aria-selected="true"] {
+  background: var(--bg-selected);
+  color: var(--text);
+  font-weight: 500;
+}
+.image-upload {
+  height: 26px;
+  font-size: var(--text-sm);
+}
+.image-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+  padding: var(--space-3);
+  list-style: none;
+  overflow-y: auto;
+}
+.image-item {
+  min-width: 0;
+  cursor: grab;
+}
+.image-item:not([draggable="true"]) {
+  cursor: default;
+}
+.image-thumb {
+  position: relative;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-side);
+}
+.image-item:hover .image-thumb {
+  border-color: var(--border-strong);
+}
+.image-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.image-thumb-missing {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(45deg, var(--bg-side), var(--bg-side) 6px, var(--bg-hover) 6px, var(--bg-hover) 12px);
+}
+.image-name {
+  display: block;
+  margin-top: var(--space-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+.image-del {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+  color: var(--danger);
+  box-shadow: var(--shadow-card);
+  line-height: 1;
+  opacity: 0;
+}
+.image-item:hover .image-del,
+.image-item:focus-within .image-del,
+.image-del:focus-visible {
+  opacity: 1;
+}
+.image-empty {
+  margin: 0;
+  padding: var(--space-6) var(--space-4);
+  text-align: center;
+  color: var(--text-faint);
+  font-size: var(--text-sm);
+}

@@ -35,6 +35,7 @@ import {
   type FlowNode,
 } from "./boardModel";
 import { flowNodeTypes, nodeTypes } from "./nodes";
+import { ImagePanel } from "./ImagePanel";
 import { useBoardImages } from "./useBoardImages";
 
 const isKnown = (type: string) => Object.prototype.hasOwnProperty.call(nodeTypes, type);
@@ -233,6 +234,7 @@ function Board({ path }: { path: string }) {
   const { onDragOver, onDrop } = useBoardImages({ path, editableRef, addNodes, viewportCentre });
 
   const shown = useMemo(() => visibleEdges(nodes, edges), [nodes, edges]);
+  const fileNodes = useMemo(() => nodes.map((n) => ({ type: n.type, file: n.data.file })), [nodes]);
 
   return (
     <div className="board" ref={rootRef}>
@@ -247,6 +249,7 @@ function Board({ path }: { path: string }) {
             </span>
           )}
           <OrderButton path={path} editable={editable} />
+          <ImagePanel path={path} editable={editable} nodes={fileNodes} />
           {editable && (
             <button
               type="button"
