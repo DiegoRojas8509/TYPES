@@ -5,7 +5,7 @@ use crate::error::{AppError, Result};
 use crate::settings::AppState;
 use serde::Serialize;
 use std::io::{BufReader, Read};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -19,8 +19,13 @@ const ENV_URL: &str = "https://claude.ai/code?environment=";
 
 // ---------- pure helpers ----------
 
+/// Parent of the workspace root, used as `GIT_CEILING_DIRECTORIES` so git does not find the app's repo above it.
+pub fn git_ceiling_for(root: &Path) -> Option<PathBuf> {
+    root.parent().filter(|p| !p.as_os_str().is_empty()).map(|p| p.to_path_buf())
+}
+
 pub fn build_remote_args() -> Vec<String> {
-    ["remote-control", "--name", "Types", "--permission-mode", "acceptEdits"]
+    ["remote-control", "--spawn=same-dir", "--name", "Types", "--permission-mode", "acceptEdits"]
         .iter()
         .map(|s| s.to_string())
         .collect()
@@ -104,6 +109,11 @@ pub fn parse_line(raw: &str) -> Option<RemoteSignal> {
     if let Some(u) = find_url(line).or_else(|| osc8_urls(raw).iter().find_map(|u| find_url(u))) {
         return Some(RemoteSignal::Url(u));
     }
+    if line.contains("Choose [1/2]") {
+        return Some(RemoteSignal::Error(
+            "Claude Code pide elegir el modo de sesión; abre Terminal con «Abrir Terminal» y elige 1.".to_string(),
+        ));
+    }
     if line.contains("Connecting") {
         return Some(RemoteSignal::Connecting);
     }
@@ -116,8 +126,11 @@ pub fn parse_line(raw: &str) -> Option<RemoteSignal> {
 /// zsh `.command` script that walks Diego through the one-time trust and consent prompts.
 pub fn trust_script(root: &Path, bin: &Path) -> String {
     let q = |p: &Path| format!("'{}'", p.to_string_lossy().replace('\'', r"'\''"));
+    let ceiling = git_ceiling_for(root)
+        .map(|c| format!("export GIT_CEILING_DIRECTORIES={}\n", q(&c)))
+        .unwrap_or_default();
     format!(
-        "#!/bin/zsh\necho '{TRUST_NOTE}'\ncd {} || exit 1\n{} remote-control --name Types\n",
+        "#!/bin/zsh\necho '{TRUST_NOTE}'\ncd {} || exit 1\n{ceiling}{} remote-control --spawn=same-dir --name Types\n",
         q(root),
         q(bin)
     )
@@ -301,8 +314,11 @@ pub fn remote_start(app: AppHandle, state: State<AppState>, remote: State<Remote
         return Ok(fail("La carpeta de trabajo no existe.".into()));
     }
     let mut cmd = Command::new(&bin);
-    cmd.args(build_remote_args())
-        .current_dir(&root)
+    cmd.args(build_remote_args());
+    if let Some(c) = git_ceiling_for(&root) {
+        cmd.env("GIT_CEILING_DIRECTORIES", c);
+    }
+    cmd.current_dir(&root)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -410,8 +426,13 @@ mod tests {
     use std::path::PathBuf;
 
     #[test]
+    fn spawn_prompt_is_error() {
+        assert!(matches!(parse_line("Spawn mode: Choose [1/2]"), Some(RemoteSignal::Error(_))));
+    }
+
+    #[test]
     fn args_exact() {
-        assert_eq!(build_remote_args(), ["remote-control", "--name", "Types", "--permission-mode", "acceptEdits"]);
+        assert_eq!(build_remote_args(), ["remote-control", "--spawn=same-dir", "--name", "Types", "--permission-mode", "acceptEdits"]);
     }
 
     #[test]
@@ -478,6 +499,13 @@ mod tests {
         assert_eq!(lines[0], "#!/bin/zsh");
         assert_eq!(lines[1], format!("echo '{TRUST_NOTE}'"));
         assert_eq!(lines[2], r"cd '/Users/d/Mi Carpeta/Ñandú'\''s/espacios' || exit 1");
-        assert_eq!(lines[3], r"'/b/it'\''s here/claude' remote-control --name Types");
+        assert_eq!(lines[3], r"export GIT_CEILING_DIRECTORIES='/Users/d/Mi Carpeta/Ñandú'\''s'");
+        assert_eq!(lines[4], r"'/b/it'\''s here/claude' remote-control --spawn=same-dir --name Types");
+    }
+
+    #[test]
+    fn git_ceiling_is_parent() {
+        assert_eq!(git_ceiling_for(Path::new("/a/b/espacios")), Some(PathBuf::from("/a/b")));
+        assert_eq!(git_ceiling_for(Path::new("/")), None);
     }
 }

@@ -78,6 +78,7 @@ Cada feature es dueña de sus componentes y su lógica. Se comunican por los sto
 #### Control remoto desde el cel (`remote.rs`, `features/chat/RemoteButton.tsx`)
 - Botón «Cel» en la cabecera del chat: lanza `claude remote-control --name Types --permission-mode acceptEdits` con cwd = **raíz del workspace** (`espacios/`), y la app de Claude del cel (pestaña Code) maneja esa sesión. «Detener» envía SIGINT al grupo de procesos (SIGKILL tras ~3 s); también se detiene al cerrar Types.
 - Mientras está activo corre `caffeinate -i -w <pid>` para que la Mac no se duerma.
+- `--spawn=same-dir` evita la pregunta interactiva del modo de sesión, y el proceso arranca con `GIT_CEILING_DIRECTORIES` = carpeta padre de la raíz: `espacios/` está dentro del repo del código y sin esto Claude lo trataría como ese repo (rama `feat/...`); así las sesiones del cel no tocan su git.
 - Primera vez: la carpeta no está confiada y el comando sale con «Workspace not trusted». El botón ofrece «Abrir Terminal» (script `confiar-control-remoto.command` en el directorio de datos de la app): se responde `y` a «Trust» y a «Enable Remote Control?», se espera «Connected» y se cierra con Ctrl+C. Después funciona solo.
 - Riesgo: quien tenga la sesión en el cel tiene los permisos de Claude sobre esa carpeta (los de Bash se aprueban desde el cel). Recomendado activar «Dispositivos de confianza» en la cuenta de Claude.
 
