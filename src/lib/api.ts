@@ -9,6 +9,14 @@ export interface Settings {
   claudePath: string | null;
 }
 
+/** Mirrors `RemoteStatus` in remote.rs. */
+export type RemoteStatus =
+  | { state: "off" }
+  | { state: "starting" }
+  | { state: "on"; url?: string }
+  | { state: "untrusted" }
+  | { state: "error"; message: string };
+
 export type NodeKind = "dir" | "file";
 
 /** `path` is relative to the workspace root and always uses `/`. */
@@ -106,6 +114,12 @@ export const api = {
     board: string | null,
   ) => invoke<number>("claude_send", { space, text, attachments, sessionId, model: model || null, board }),
   claudeStop: (runId: number) => invoke<void>("claude_stop", { runId }),
+
+  remoteStatus: () => invoke<RemoteStatus>("remote_status"),
+  remoteStart: () => invoke<RemoteStatus>("remote_start"),
+  remoteStop: () => invoke<RemoteStatus>("remote_stop"),
+  /** Opens Terminal with the one-time trust script for the workspace root. */
+  remoteTrust: () => invoke<void>("remote_trust"),
 };
 
 /** URL the webview can load for an absolute path (needs the asset protocol enabled). */
@@ -129,6 +143,10 @@ export function onFsChanged(cb: (payload: FsChangedPayload) => void): Promise<Un
 
 export function onClaudeEvent(cb: (event: ClaudeEvent) => void): Promise<UnlistenFn> {
   return listen<ClaudeEvent>("claude-event", (e) => cb(e.payload));
+}
+
+export function onRemoteEvent(cb: (status: RemoteStatus) => void): Promise<UnlistenFn> {
+  return listen<RemoteStatus>("remote-event", (e) => cb(e.payload));
 }
 
 export type { UnlistenFn };

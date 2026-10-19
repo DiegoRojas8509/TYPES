@@ -175,7 +175,7 @@ pub struct ClaudeStatus {
     pub version: Option<String>,
 }
 
-fn locate(settings: &Settings) -> Option<PathBuf> {
+pub(crate) fn locate(settings: &Settings) -> Option<PathBuf> {
     let home = dirs::home_dir()?;
     find_claude(settings, &home, shell_lookup)
 }

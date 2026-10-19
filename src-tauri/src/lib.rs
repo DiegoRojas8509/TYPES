@@ -1,5 +1,6 @@
 mod claude;
 mod error;
+mod remote;
 mod settings;
 mod templates;
 mod watcher;
@@ -24,6 +25,7 @@ pub fn run() {
             app.manage(settings::AppState::new(config_file, settings));
             app.manage(watcher::WatcherSlot::default());
             app.manage(claude::ClaudeState::default());
+            app.manage(remote::RemoteState::default());
             watcher::restart(app.handle());
             Ok(())
         })
@@ -34,6 +36,10 @@ pub fn run() {
             claude::claude_status,
             claude::claude_send,
             claude::claude_stop,
+            remote::remote_status,
+            remote::remote_start,
+            remote::remote_stop,
+            remote::remote_trust,
             workspace::list_tree,
             workspace::read_text,
             workspace::write_text,
@@ -54,6 +60,7 @@ pub fn run() {
         .run(|app, event| {
             if let tauri::RunEvent::Exit = event {
                 app.state::<claude::ClaudeState>().kill_all();
+                app.state::<remote::RemoteState>().stop(app);
             }
         });
 }

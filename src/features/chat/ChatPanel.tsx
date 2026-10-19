@@ -4,6 +4,7 @@ import { useApp } from "../../store/app";
 import { Composer } from "./Composer";
 import { startChatEvents, useChats } from "./conversations";
 import { Markdown } from "./Markdown";
+import { RemoteButton } from "./RemoteButton";
 import { type ChatItem, initialChat, MSG_NOT_FOUND } from "./reducer";
 
 const EMPTY = initialChat();
@@ -131,6 +132,7 @@ function SpaceChat({ space }: { space: string }) {
         <span className="chat-space" title={space}>
           {space}
         </span>
+        <RemoteButton />
         {confirming ? (
           <>
             <span className="chat-confirm">Se borra este chat. Claude conserva el contexto del espacio.</span>

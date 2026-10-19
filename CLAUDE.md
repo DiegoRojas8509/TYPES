@@ -75,6 +75,12 @@ Cada feature es dueña de sus componentes y su lógica. Se comunican por los sto
 - Bash, Skill, Agent y NotebookEdit permitidos al agente embebido (decisión de Diego, 2026-10-13: mismos accesos que Claude Code en su terminal). En modo no interactivo no hay forma de aprobar permisos, así que van sin restricción. Riesgo aceptado: una nota o página web con instrucciones maliciosas podría hacerle ejecutar comandos. Si hace falta, diseñar una interfaz de permisos o restringir con `Bash(patrón)`.
 - Selector de modelo en el compositor (`src/lib/model.ts`, se guarda en localStorage); se pasa como `--model` por mensaje. "Predeterminado" = el modelo por defecto del Claude Code instalado.
 
+#### Control remoto desde el cel (`remote.rs`, `features/chat/RemoteButton.tsx`)
+- Botón «Cel» en la cabecera del chat: lanza `claude remote-control --name Types --permission-mode acceptEdits` con cwd = **raíz del workspace** (`espacios/`), y la app de Claude del cel (pestaña Code) maneja esa sesión. «Detener» envía SIGINT al grupo de procesos (SIGKILL tras ~3 s); también se detiene al cerrar Types.
+- Mientras está activo corre `caffeinate -i -w <pid>` para que la Mac no se duerma.
+- Primera vez: la carpeta no está confiada y el comando sale con «Workspace not trusted». El botón ofrece «Abrir Terminal» (script `confiar-control-remoto.command` en el directorio de datos de la app): se responde `y` a «Trust» y a «Enable Remote Control?», se espera «Connected» y se cierra con Ctrl+C. Después funciona solo.
+- Riesgo: quien tenga la sesión en el cel tiene los permisos de Claude sobre esa carpeta (los de Bash se aprueban desde el cel). Recomendado activar «Dispositivos de confianza» en la cuenta de Claude.
+
 ## 5. Reglas de implementación
 - **Nunca perder texto de Diego.** Guardado automático con espera de 800 ms. Si un archivo abierto cambia en disco: sin cambios locales pendientes se recarga solo; con cambios pendientes se avisa y Diego elige.
 - **No reescribir lo que no se editó.** Abrir una página o pizarra no la guarda. Solo se escribe a disco cuando Diego modifica algo.
