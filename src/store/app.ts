@@ -1,7 +1,18 @@
 import { create } from "zustand";
-import { api, errorMessage, onFsChanged, type DeletedEntry, type Settings, type TreeNode } from "../lib/api";
+import {
+  api,
+  errorMessage,
+  onActivityChanged,
+  onFsChanged,
+  type Activity,
+  type DeletedEntry,
+  type Settings,
+  type TreeNode,
+} from "../lib/api";
+import { nearestExistingDir } from "../lib/browse";
+import { readSeen, writeSeen } from "../lib/seenPref";
 import { readSidebarCollapsed, writeSidebarCollapsed } from "../lib/sidebarPref";
-import { isWithin, replacePrefix, spaceOf, titleOf } from "../lib/paths";
+import { isWithin, parentOf, replacePrefix, spaceOf, titleOf } from "../lib/paths";
 
 export interface Notice {
   id: number;
@@ -21,6 +32,12 @@ export interface AppState {
   treeLoaded: boolean;
   /** Workspace-relative path of the file shown in the middle pane. */
   openPath: string | null;
+  /** Folder shown when nothing is open; null = Inicio (the list of spaces). */
+  currentDir: string | null;
+  /** Last change per workspace-relative path (NFC keys), from the backend log. */
+  activity: Record<string, Activity>;
+  /** When Diego last opened each file (ms); an orange dot shows when Claude changed it after that. */
+  seen: Record<string, number>;
   /** First segment of `openPath`, or the last space selected in the sidebar. */
   activeSpace: string | null;
   /** Folder paths that are expanded in the sidebar. */
@@ -38,6 +55,11 @@ export interface AppState {
   init(): Promise<void>;
   refreshTree(): Promise<void>;
   open(path: string | null): void;
+  /** Shows a folder's cards (null = Inicio) and closes the open file. */
+  browse(dir: string | null): void;
+  /** Closes the open file (landing in its folder) or goes up one folder. */
+  back(): void;
+  refreshActivity(): Promise<void>;
   selectSpace(space: string | null): void;
   setExpanded(path: string, value: boolean): void;
   toggleExpanded(path: string): void;
@@ -63,6 +85,9 @@ export function initialState() {
     tree: [],
     treeLoaded: false,
     openPath: null,
+    currentDir: null,
+    activity: {},
+    seen: {},
     activeSpace: null,
     expanded: {},
     chatCollapsed: false,
@@ -72,6 +97,31 @@ export function initialState() {
     lastDeleted: null,
     lastDeletedAt: 0,
   } satisfies Partial<AppState>;
+}
+
+function collectFiles(nodes: TreeNode[], into: Set<string>) {
+  for (const n of nodes) {
+    if (n.kind === "dir") collectFiles(n.children, into);
+    else into.add(n.path);
+  }
+}
+
+/** Drops `seen` entries of files that no longer exist (persisting only when something changed). */
+function pruneSeen(seen: Record<string, number>, tree: TreeNode[]): Record<string, number> {
+  const keys = Object.keys(seen);
+  if (keys.length === 0) return seen;
+  const files = new Set<string>();
+  collectFiles(tree, files);
+  if (keys.every((k) => files.has(k))) return seen;
+  const next = Object.fromEntries(keys.filter((k) => files.has(k)).map((k) => [k, seen[k]]));
+  writeSeen(next);
+  return next;
+}
+
+function renameKeys(seen: Record<string, number>, from: string, to: string): Record<string, number> {
+  const next = Object.fromEntries(Object.entries(seen).map(([k, v]) => [replacePrefix(k, from, to), v]));
+  writeSeen(next);
+  return next;
 }
 
 let noticeSeq = 0;
@@ -92,18 +142,25 @@ export const useApp = create<AppState>()((set, get) => {
   return {
     ...initialState(),
     sidebarCollapsed: readSidebarCollapsed(),
+    seen: readSeen(),
 
     async init() {
       const settings = await attempt(() => api.getSettings());
       if (settings) set({ settings });
-      await get().refreshTree();
+      await Promise.all([get().refreshTree(), get().refreshActivity()]);
     },
 
     async refreshTree() {
       const mine = ++refreshSeq;
       try {
         const tree = await api.listTree();
-        if (mine === refreshSeq) set({ tree, treeLoaded: true });
+        if (mine === refreshSeq) {
+          set((s) => {
+            const currentDir = nearestExistingDir(tree, s.currentDir);
+            const seen = pruneSeen(s.seen, tree);
+            return { tree, treeLoaded: true, currentDir, seen };
+          });
+        }
       } catch (e) {
         if (mine === refreshSeq) {
           set({ treeLoaded: true });
@@ -119,7 +176,40 @@ export const useApp = create<AppState>()((set, get) => {
       }
       // A root-level file (e.g. the workspace CLAUDE.md) belongs to no space: keep the last one.
       const space = path.includes("/") ? spaceOf(path) : null;
-      set((s) => ({ openPath: path, activeSpace: space ?? s.activeSpace }));
+      const seen = { ...get().seen, [path]: Date.now() };
+      writeSeen(seen);
+      set((s) => ({ openPath: path, currentDir: parentOf(path) || null, seen, activeSpace: space ?? s.activeSpace }));
+    },
+
+    browse(dir) {
+      set((s) => ({ openPath: null, currentDir: dir || null, activeSpace: dir ? spaceOf(dir) : s.activeSpace }));
+    },
+
+    back() {
+      const { openPath, currentDir } = get();
+      const from = openPath !== null ? parentOf(openPath) : currentDir !== null ? parentOf(currentDir) : null;
+      if (openPath === null && currentDir === null) return;
+      set({ openPath: null, currentDir: from || null });
+    },
+
+    async refreshActivity() {
+      let activity: Record<string, Activity>;
+      try {
+        activity = await api.activity();
+      } catch {
+        return; // the log is a nicety: cards just show less
+      }
+      set((s) => {
+        // What Diego is looking at right now counts as seen, so no dot appears behind his back.
+        const open = s.openPath;
+        const at = open ? activity[open.normalize("NFC")]?.at : undefined;
+        if (open && at !== undefined && at > (s.seen[open] ?? 0)) {
+          const seen = { ...s.seen, [open]: at };
+          writeSeen(seen);
+          return { activity, seen };
+        }
+        return { activity };
+      });
     },
 
     selectSpace(space) {
@@ -195,6 +285,8 @@ export const useApp = create<AppState>()((set, get) => {
         for (const [k, v] of Object.entries(s.expanded)) expanded[replacePrefix(k, path, next)] = v;
         return {
           expanded,
+          seen: renameKeys(s.seen, path, next),
+          currentDir: s.currentDir === null ? null : replacePrefix(s.currentDir, path, next),
           openPath: s.openPath === null ? null : replacePrefix(s.openPath, path, next),
           activeSpace: s.activeSpace === null ? null : replacePrefix(s.activeSpace, path, next),
         };
@@ -218,6 +310,7 @@ export const useApp = create<AppState>()((set, get) => {
           lastDeleted: deleted.trashed ? deleted : null,
           lastDeletedAt: Date.now(),
           expanded,
+          currentDir: s.currentDir !== null && isWithin(s.currentDir, path) ? parentOf(path) || null : s.currentDir,
           openPath: s.openPath !== null && isWithin(s.openPath, path) ? null : s.openPath,
           activeSpace: s.activeSpace !== null && isWithin(s.activeSpace, path) ? null : s.activeSpace,
         };
@@ -250,10 +343,24 @@ export const useApp = create<AppState>()((set, get) => {
 /** How long after a delete Cmd+Z still brings it back. */
 export const UNDO_WINDOW_MS = 120_000;
 
-/** Subscribes the tree to `fs-changed`. Resolves with the unlisten function. */
+/** Subscribes the tree and the activity log to the backend events. Resolves with the unlisten function. */
 export async function startSync(): Promise<() => void> {
-  return onFsChanged(({ paths }) => {
-    useApp.setState({ fsChange: { seq: ++fsSeq, paths } });
-    void useApp.getState().refreshTree();
-  });
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const refreshActivitySoon = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => void useApp.getState().refreshActivity(), 150);
+  };
+  const [offFs, offActivity] = await Promise.all([
+    onFsChanged(({ paths }) => {
+      useApp.setState({ fsChange: { seq: ++fsSeq, paths } });
+      void useApp.getState().refreshTree();
+      refreshActivitySoon();
+    }),
+    onActivityChanged(refreshActivitySoon),
+  ]);
+  return () => {
+    clearTimeout(timer);
+    offFs();
+    offActivity();
+  };
 }

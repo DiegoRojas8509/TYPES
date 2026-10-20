@@ -143,3 +143,21 @@
   margin: 0;
   flex: 1;
 }
+
+/* document pane: breadcrumb on top of cards or of the open file */
+.doc-pane {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.doc-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+/* A renderer's own bar keeps only its controls, pushed to the right (the title lives in the breadcrumb). */
+.pane-header-end {
+  justify-content: flex-end;
+}

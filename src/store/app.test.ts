@@ -13,11 +13,13 @@ vi.mock("../lib/api", () => ({
     renameEntry: vi.fn(),
     deleteEntry: vi.fn(),
     restoreEntry: vi.fn(),
+    activity: vi.fn().mockResolvedValue({}),
   },
   onFsChanged: vi.fn(async (cb: (p: { paths: string[] }) => void) => {
     fsListeners.push(cb);
     return () => {};
   }),
+  onActivityChanged: vi.fn(async () => () => {}),
   errorMessage: (e: unknown) => (e as { message?: string }).message ?? "error",
 }));
 

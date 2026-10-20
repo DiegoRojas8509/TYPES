@@ -48,10 +48,7 @@ export function HtmlViewer({ path }: { path: string }) {
 
   return (
     <div className="viewer">
-      <div className="pane-header">
-        <span className="pane-title" title={path}>
-          {baseName(path)}
-        </span>
+      <div className="pane-header pane-header-end">
         <span className="viewer-actions">
           <button type="button" className="btn" onClick={file.reload}>
             Recargar

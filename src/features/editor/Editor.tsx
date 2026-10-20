@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import type { Editor as TiptapEditor } from "@tiptap/core";
 import { api, assetUrl, errorMessage } from "../../lib/api";
-import { spaceOf, titleOf } from "../../lib/paths";
+import { spaceOf } from "../../lib/paths";
 import { useApp } from "../../store/app";
 import { createExtensions } from "../../lib/extensions";
 import { pathFromAssetUrl, relativeSrc, resolveImageSrc, unresolveImageSrc, unsupportedSyntax } from "../../lib/markdown";
@@ -32,10 +32,7 @@ export function MarkdownEditor({ path }: { path: string }) {
 
   return (
     <div className="editor">
-      <div className="pane-header">
-        <span className="pane-title" title={path}>
-          {titleOf(path)}
-        </span>
+      <div className="pane-header pane-header-end">
         {doc.status !== "error" && (
           <span className={`save-status is-${doc.status}`} role="status">
             {STATUS_LABEL[doc.status]}

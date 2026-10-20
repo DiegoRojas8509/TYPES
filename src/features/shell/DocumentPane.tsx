@@ -1,32 +1,34 @@
-import { kindOf } from "../../lib/paths";
+import { kindOf, parentOf } from "../../lib/paths";
 import { useApp } from "../../store/app";
 import { BoardView } from "../board/BoardView";
+import { Breadcrumb } from "../home/Breadcrumb";
+import { FolderView } from "../home/FolderView";
+import { HomeView } from "../home/HomeView";
+import { useBrowseShortcuts } from "../home/useBrowseShortcuts";
 import { FileFallback } from "../viewer/FileFallback";
 import { HtmlViewer } from "../viewer/HtmlViewer";
 import { ImageViewer } from "../viewer/ImageViewer";
 import { MarkdownEditor } from "../editor/Editor";
 
 /**
- * Middle pane: picks the renderer for `openPath` (workspace-relative) by file kind.
- * Each renderer is keyed by path so switching files never reuses state.
+ * Middle pane: a breadcrumb header over either the cards (Inicio or a folder) or the renderer
+ * for `openPath` (workspace-relative) picked by file kind. Renderers are keyed by path so
+ * switching files never reuses state.
  */
 export function DocumentPane() {
   const openPath = useApp((s) => s.openPath);
-  const hasSpaces = useApp((s) => s.tree.some((n) => n.kind === "dir"));
+  const currentDir = useApp((s) => s.currentDir);
+  useBrowseShortcuts();
 
-  if (!openPath) {
-    return (
-      <div className="empty">
-        <h2>{hasSpaces ? "Abre una pizarra" : "Empieza por un espacio"}</h2>
-        <p>
-          {hasSpaces
-            ? "Elige una pizarra en la barra lateral, o crea una nueva con el botón + de un espacio."
-            : "Crea un espacio en la barra lateral para tu primer negocio o proyecto. Dentro armarás pizarras y Claude trabajará sobre ellas."}
-        </p>
-      </div>
-    );
-  }
+  return (
+    <div className="doc-pane">
+      <Breadcrumb dir={openPath ? parentOf(openPath) || null : currentDir} file={openPath} />
+      <div className="doc-body">{openPath ? renderFile(openPath) : currentDir === null ? <HomeView /> : <FolderView dir={currentDir} />}</div>
+    </div>
+  );
+}
 
+function renderFile(openPath: string) {
   switch (kindOf(openPath)) {
     case "markdown":
       return <MarkdownEditor key={openPath} path={openPath} />;

@@ -5,8 +5,10 @@ vi.mock("./lib/api", () => ({
   api: {
     getSettings: vi.fn().mockResolvedValue({ workspaceRoot: "/w", claudePath: null }),
     listTree: vi.fn().mockResolvedValue([]),
+    activity: vi.fn().mockResolvedValue({}),
   },
   onFsChanged: vi.fn(async () => () => {}),
+  onActivityChanged: vi.fn(async () => () => {}),
   errorMessage: (e: unknown) => String(e),
 }));
 
@@ -18,9 +20,9 @@ beforeEach(() => useApp.setState(initialState()));
 describe("App", () => {
   it("renders the app name and the first-run invitation", async () => {
     render(<App />);
-    expect(screen.getByText("Types")).toBeInTheDocument();
-    expect(await screen.findByText("Crea tu primer espacio")).toBeInTheDocument();
-    expect(screen.getByText("Empieza por un espacio")).toBeInTheDocument();
+    expect(screen.getAllByText("Types").length).toBeGreaterThan(0);
+    // Once in the sidebar and once in the Inicio view.
+    expect(await screen.findAllByText("Crea tu primer espacio")).toHaveLength(2);
   });
 
   it("collapses and restores the chat pane", () => {

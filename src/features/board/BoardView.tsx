@@ -16,7 +16,6 @@ import {
   type NodeChange,
 } from "@xyflow/react";
 import { mergeCanvasText, newId, parseCanvas, serializeCanvas, type CanvasNode } from "../../lib/canvas";
-import { titleOf } from "../../lib/paths";
 import { useDocument, type DocStatus } from "../../lib/useDocument";
 import { defaultNode, type BlockKind } from "./addMenu";
 import { BlockMenu } from "./BlockMenu";
@@ -238,10 +237,7 @@ function Board({ path }: { path: string }) {
 
   return (
     <div className="board" ref={rootRef}>
-      <div className="pane-header">
-        <span className="pane-title" title={path}>
-          {titleOf(path)}
-        </span>
+      <div className="pane-header pane-header-end">
         <span className="board-bar">
           {doc.status !== "error" && (
             <span className={`save-status is-${doc.status}`} role="status">

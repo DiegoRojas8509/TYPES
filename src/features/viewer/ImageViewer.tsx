@@ -42,10 +42,7 @@ export function ImageViewer({ path }: { path: string }) {
 
   return (
     <div className="viewer">
-      <div className="pane-header">
-        <span className="pane-title" title={path}>
-          {baseName(path)}
-        </span>
+      <div className="pane-header pane-header-end">
         {shown && (
           <span className="viewer-meta">
             {shown.width} × {shown.height} px
