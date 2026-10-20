@@ -1,12 +1,12 @@
-// Whether the left sidebar is collapsed. A per-viewer convenience: storage may be
-// unavailable, in which case the sidebar simply starts open every time.
-const KEY = "types.sidebarCollapsed";
+// Whether the left sidebar is collapsed. A per-viewer convenience: card navigation is the
+// main way around, so the tree starts collapsed. v2 key: earlier preferences are ignored.
+const KEY = "types.sidebarCollapsed.v2";
 
 export function readSidebarCollapsed(): boolean {
   try {
-    return localStorage.getItem(KEY) === "1";
+    return localStorage.getItem(KEY) !== "0";
   } catch {
-    return false;
+    return true;
   }
 }
 

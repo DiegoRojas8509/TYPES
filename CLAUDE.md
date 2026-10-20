@@ -22,6 +22,7 @@ Para features nuevas usa superpowers (brainstorming → writing-plans → subage
 | 1 | Espacios y páginas, editor Markdown, visor de HTML e imágenes, refresco en vivo, panel de chat con Claude | Código completo (tareas 1-7, pruebas verdes) y `Types.app` compilada. **Falta la prueba real con la ventana abierta** (plan, Tarea 8 paso 3; se cubre junto con la de la pizarra): ver `docs/superpowers/plans/2026-10-12-types-fase-1.md` |
 | Imágenes | Repositorio `Imágenes/` por carpeta, panel de imágenes en la pizarra, deshacer borrados, escala tipográfica mayor y sidebar colapsable (rama `feat/pizarra`) | Código completo (pruebas verdes), `Types.app` compila y firmada. **Falta la prueba real con la ventana abierta** (se cubre junto con la de la pizarra): ver `docs/superpowers/specs/2026-10-16-imagenes-design.md` |
 | Pizarra | Pizarras `.canvas` (JSON Canvas + bloques extra) como página principal; el "+" crea pizarras; Claude sabe cuál está abierta y la puede ordenar | Código completo (tareas 1-9, pruebas verdes), `Types.app` compila. **Falta la prueba real con la ventana abierta**: ver `docs/superpowers/plans/2026-10-14-pizarra.md` (Tarea 10) |
+| Tarjetas | Navegación por tarjetas (Inicio / carpeta / pizarra) con miniaturas, hora y autor, y sidebar plegada por defecto (rama `feat/pizarra`) | Código completo (pruebas verdes). **Falta la prueba real con la ventana abierta**: ver `docs/superpowers/plans/2026-10-19-tarjetas.md` |
 | 2 | Tableros tipo Trello | Absorbida por la pizarra (zonas + bloques de proceso). Solo se retoma si Diego pide columnas/tarjetas estilo Kanban |
 | 3 | Exportación (Google Drive y otros destinos) | Pendiente |
 
@@ -49,21 +50,23 @@ espacios/
     Imágenes/          imágenes de esta carpeta (se crea al subir la primera); cada subcarpeta tiene la suya
 ```
 - Una pizarra es un `.canvas`: JSON Canvas (`{nodes, edges}`; todo nodo lleva `id, type, x, y, width, height, color?`) más bloques extra. Tipos: `text` (nota Markdown), `file` (imagen, ruta relativa a la carpeta del `.canvas`, normalmente en la `Imágenes/` de esa misma carpeta, p. ej. `Imágenes/x.png`), `group` (zona), `table`, `chart`, `timeline`, `decision`; un tipo desconocido se conserva intacto. Campos de cada tipo: plan `docs/superpowers/plans/2026-10-14-pizarra.md`, sección "Formato `.canvas`".
-- El "+" del sidebar crea pizarras. Los `.md` siguen abriéndose y guardándose en el editor Tiptap, pero ya no se crean desde la app. Sin formato propietario ni base de datos: ambos son texto plano legible fuera de la app.
+- El "+" (del sidebar y de la vista de carpeta) crea pizarras. Los `.md` siguen abriéndose y guardándose en el editor Tiptap, pero ya no se crean desde la app. Sin formato propietario ni base de datos: ambos son texto plano legible fuera de la app.
 - Los HTML que genera Claude deben ser autocontenidos (CSS y JS inline), porque el visor los muestra aislados.
 - El sistema de archivos es la única fuente de verdad. La app no guarda copia del contenido.
 
 ### Backend (Rust, `src-tauri/src/`)
 | Módulo | Responsabilidad |
 |--------|-----------------|
-| `workspace.rs` | Raíz del workspace, árbol, leer/escribir, crear/renombrar/borrar (a la papelera), importar archivos, `create_board` (crea un `.canvas` vacío sin pisar nombres), repositorio de imágenes por carpeta (`save_image`/`list_images` sobre `<carpeta>/Imágenes/`, `save_attachment` para el chat), `delete_entry` (devuelve `{original, trashed}`) y `restore_entry` (deshacer), y la migración de arranque de los CLAUDE.md viejos. Toda ruta se valida contra la raíz. |
+| `workspace.rs` | Raíz del workspace, árbol, leer/escribir, crear/renombrar/borrar (a la papelera), importar archivos, `create_board` (crea un `.canvas` vacío sin pisar nombres), repositorio de imágenes por carpeta (`save_image`/`list_images` sobre `<carpeta>/Imágenes/`, `save_attachment` para el chat), `TreeNode.modified` (mtime en ms), `delete_entry` (devuelve `{original, trashed}`) y `restore_entry` (deshacer), y la migración de arranque de los CLAUDE.md viejos. Toda ruta se valida contra la raíz. |
 | `templates.rs` | Plantillas de los CLAUDE.md del workspace y de cada espacio, incluida la sección `## Pizarras` y las líneas viejas de `adjuntos/` que la migración reemplaza (reglas del `.canvas` para Claude; se agrega al CLAUDE.md raíz existente sin tocar el resto). |
+| `preview.rs` | Comando `board_preview`: miniatura ligera (bloques) de un `.canvas`, con caché; solo lectura. |
+| `activity.rs` | Registro de actividad (`activity`; evento `activity-changed`) en `actividad.json` dentro del directorio de config de la app, **fuera del workspace**. Clasifica quién modificó cada archivo (ver §5). |
 | `watcher.rs` | Vigila el workspace y emite el evento `fs-changed` al frontend. |
 | `claude.rs` | Localiza el binario de Claude Code, lo lanza en la carpeta del espacio y retransmite su salida como eventos `claude-event`. |
 | `settings.rs` | Ajustes persistentes (raíz del workspace, ruta manual del binario). |
 
 ### Frontend (`src/`)
-`lib/api.ts` (única puerta a `invoke` y eventos) · `lib/useDocument.ts` (máquina de estados de un archivo abierto, compartida por notas y pizarras) · `store/` · `features/sidebar` · `features/editor` (notas `.md`) · `features/board` (pizarra y sus bloques; lógica de formato en `lib/canvas.ts`) · `features/viewer` · `features/chat` · `features/shell` (router de documentos `DocumentPane`, avisos, iconos y paneles).
+`lib/api.ts` (única puerta a `invoke` y eventos) · `lib/useDocument.ts` (máquina de estados de un archivo abierto, compartida por notas y pizarras) · `store/` (`app.ts` + `browseSlice.ts`) · `lib/headerSlot.tsx` (ranura de la cabecera compartida: las features inyectan controles con `HeaderControls`) · `features/sidebar` · `features/home` (tarjetas) · `features/editor` (notas `.md`) · `features/board` (pizarra y sus bloques; lógica de formato en `lib/canvas.ts`) · `features/viewer` · `features/chat` · `features/shell` (router de documentos `DocumentPane` —cabecera con migas de pan sobre Inicio, carpeta o archivo abierto—, avisos, iconos y paneles).
 Cada feature es dueña de sus componentes y su lógica. Se comunican por los stores de zustand: importar el módulo de STORE de otra feature (p. ej. `features/chat/conversations`) es el canal permitido; importar sus componentes no. `features/shell` es el router: es el único lugar que puede montar los componentes de entrada de las features (`DocumentPane` monta editor, pizarra y visores), y sus iconos son piezas compartidas que cualquier feature puede importar.
 
 ### Integración con Claude Code
@@ -74,6 +77,12 @@ Cada feature es dueña de sus componentes y su lógica. Se comunican por los sto
 - Las imágenes del chat se guardan en `<espacio>/Imágenes/` (`save_attachment`) y se le pasan a Claude como rutas en el mensaje.
 - Bash, Skill, Agent y NotebookEdit permitidos al agente embebido (decisión de Diego, 2026-10-13: mismos accesos que Claude Code en su terminal). En modo no interactivo no hay forma de aprobar permisos, así que van sin restricción. Riesgo aceptado: una nota o página web con instrucciones maliciosas podría hacerle ejecutar comandos. Si hace falta, diseñar una interfaz de permisos o restringir con `Bash(patrón)`.
 - Selector de modelo en el compositor (`src/lib/model.ts`, se guarda en localStorage); se pasa como `--model` por mensaje. "Predeterminado" = el modelo por defecto del Claude Code instalado.
+
+#### Navegación por tarjetas
+- Tres vistas en el panel central bajo una cabecera común con migas de pan: **Inicio** (espacios), **carpeta** (`currentDir`) y el archivo abierto (`openPath`). `DocumentPane` ya no tiene estado vacío propio: sin archivo ni carpeta muestra `HomeView`.
+- Estado en `store/browseSlice.ts`: `currentDir`, `seen` (cuándo abrió Diego cada archivo; localStorage `types.seen`), `activity` (espejo del comando `activity`) y `showContextFiles`.
+- Tarjetas en `features/home/`: `BoardCard` (miniatura perezosa con `board_preview`), `FolderCard`, `FileCard`, `CardMenu`. Teclado: flechas, Enter, F2 (renombrar), Supr/Backspace (a la papelera), Esc y Cmd/Ctrl+[ (volver).
+- El sidebar con el árbol sigue, pero **arranca plegado** (`types.sidebarCollapsed.v2`; Cmd/Ctrl+\ lo alterna, el riel «Mostrar barra lateral» lo reabre).
 
 #### Control remoto desde el cel (`remote.rs`, `features/chat/RemoteButton.tsx`)
 - Botón «Cel» en la cabecera del chat: lanza `claude remote-control --name Types --permission-mode acceptEdits` con cwd = **raíz del workspace** (`espacios/`), y la app de Claude del cel (pestaña Code) maneja esa sesión. «Detener» envía SIGINT al grupo de procesos (SIGKILL tras ~3 s); también se detiene al cerrar Types.
@@ -88,6 +97,9 @@ Cada feature es dueña de sus componentes y su lógica. Se comunican por los sto
 - **Pizarras:** una edición parchea el dato crudo solo del bloque tocado; nunca reescribe bloques que Diego no tocó (conserva campos extra/desconocidos y entradas que no son objeto). Un `.canvas` inválido o vacío se abre en solo lectura y nunca se sobrescribe. Los cambios de Diego y los de Claude se fusionan por bloque (hook de merge de `useDocument`), no por archivo completo. Las notas cuyo Markdown el editor no puede conservar quedan en solo lectura.
 - **Accesibilidad de bloques:** el estado de un bloque (p. ej. hecho/en curso/pendiente, opción elegida) se distingue sin depender solo del color, y todo control es alcanzable con teclado.
 - **Rutas seguras.** Ningún comando acepta rutas que salgan de la raíz del workspace (`..`, absolutas, symlinks hacia afuera).
+- **La actividad nunca vive dentro de `espacios/`** (son datos de negocio y Claude lee esa carpeta): `actividad.json` está en el directorio de config de la app. Claves normalizadas a NFC.
+- **Atribución de actividad** (`by`: `tu` / `claude` / `claude-cel` / `fuera`): las escrituras de la app se registran como `tu` y su eco del watcher se ignora durante 2 s (reloj inyectable en las pruebas); lo que cambia mientras corre un chat de ese espacio, o en los 1,5 s siguientes a que termine, es `claude`; si no, `claude-cel` cuando el control remoto está activo, y `fuera` en el resto. Claude escribiendo dentro de una carpeta recién creada o importada en 2 s degrada a `tu`, nunca al revés. Las carpetas no tienen entradas: su actividad se deriva de sus descendientes.
+- **Punto de no visto:** una tarjeta lo lleva si `by` ∈ {claude, claude-cel} y `at > seen[ruta]`. `seen` solo se fija al abrir el archivo; uno que Diego está mirando cuenta como visto.
 - **Borrar manda a la papelera** de macOS (`NSFileManager.trashItemAtURL`, sin pasar por Finder ni pedir permiso de Automatización), nunca elimina definitivo. Cmd/Ctrl+Z restaura lo último borrado, solo fuera de campos de texto (input, textarea, select, contenteditable) para no pisar el deshacer del texto.
 - **Migración de CLAUDE.md:** al arrancar, solo en el CLAUDE.md raíz y en el de cada espacio de primer nivel, reemplaza únicamente las líneas idénticas byte a byte a las plantillas viejas que mencionaban `adjuntos/`; cualquier otra línea (incluso editada por Diego) se respeta. Es idempotente y nunca bloquea el arranque.
 - Interfaz en español; código, identificadores y commits en inglés.
@@ -121,7 +133,8 @@ Firma: el build firma con el certificado propio «Types Local Signing» (llavero
 - Al borrar una imagen desde el panel, el aviso de uso cuenta las pizarras `.canvas` de la misma carpeta que la usan (no bloques ni otras carpetas).
 - Deshacer = solo lo último borrado, por sesión (`lastDeleted` en memoria; no sobrevive al cierre de la app).
 - Escala tipográfica ~12 % mayor, solo vía tokens `--text-*` en `src/styles/tokens.css`.
-- Sidebar izquierdo colapsable con Cmd/Ctrl+\, estado persistido.
+- Las tarjetas reemplazan al árbol como navegación principal; cada una muestra miniatura, hora del último cambio y quién lo hizo (tú / Claude / cel / fuera). Miniaturas de pizarra vía `board_preview` perezoso (solo las visibles) para no leer todos los `.canvas`.
+- Sidebar izquierdo colapsable con Cmd/Ctrl+\, **plegado por defecto**; clave nueva `types.sidebarCollapsed.v2` para ignorar preferencias viejas que lo mantendrían abierto.
 
 ## graphify
 

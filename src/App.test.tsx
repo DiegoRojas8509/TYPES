@@ -39,12 +39,12 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Ocultar barra lateral" }));
     expect(useApp.getState().sidebarCollapsed).toBe(true);
     expect(screen.queryByRole("navigation", { name: "Espacios y pizarras" })).not.toBeInTheDocument();
-    expect(localStorage.getItem("types.sidebarCollapsed")).toBe("1");
+    expect(localStorage.getItem("types.sidebarCollapsed.v2")).toBe("1");
     fireEvent.click(screen.getByRole("button", { name: "Mostrar barra lateral" }));
     expect(useApp.getState().sidebarCollapsed).toBe(false);
     expect(screen.getByRole("navigation", { name: "Espacios y pizarras" })).toBeVisible();
     expect(screen.queryByRole("button", { name: "Mostrar barra lateral" })).not.toBeInTheDocument();
-    expect(localStorage.getItem("types.sidebarCollapsed")).toBe("0");
+    expect(localStorage.getItem("types.sidebarCollapsed.v2")).toBe("0");
   });
 
   it("toggles the sidebar with Cmd+\\", () => {
