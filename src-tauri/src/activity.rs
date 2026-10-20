@@ -174,6 +174,12 @@ impl ActivityLog {
         }
     }
 
+    /// Marks a single path (and its folders) as ours BEFORE the app writes it, so the
+    /// watcher cannot win the race against `record_own`.
+    pub fn mark_own(&self, path: &str) {
+        self.mark(&nfc(path), false);
+    }
+
     /// Marks a folder (and everything that appears under it) as ours BEFORE a
     /// long operation, so its watcher events are not attributed to anyone else.
     pub fn mark_own_tree(&self, path: &str) {
@@ -555,5 +561,19 @@ mod tests {
         log.record_own_tree("Ropa");
         log.clear();
         assert!(log.snapshot().is_empty() && !log.is_own("Ropa/x"));
+    }
+
+    #[test]
+    fn premark_shields_the_echo_before_the_record() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("a.md"), "x").unwrap();
+        let (log, t) = new_log(dir.path());
+        log.mark_own("a.md");
+        // The watcher wins the race: the event arrives before record_own.
+        log.ingest(&["a.md".into()], |_| true, Actor::Fuera);
+        assert!(log.snapshot().is_empty(), "premarked path is not attributed to anyone");
+        t.store(4_000, Ordering::SeqCst);
+        log.ingest(&["a.md".into()], |_| true, Actor::Fuera);
+        assert_eq!(log.snapshot()["a.md"].by, Actor::Fuera);
     }
 }

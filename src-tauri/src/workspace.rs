@@ -622,13 +622,29 @@ pub fn read_text(state: State<AppState>, path: String) -> Result<String> {
 
 #[tauri::command]
 pub fn write_text(state: State<AppState>, log: State<ActivityLog>, path: String, content: String) -> Result<()> {
-    write_text_in(&state.root(), &path, &content)?;
-    log.record_own(&join_rel(&rel_parts(&path).unwrap_or_default()));
+    write_text_logged(&state.root(), &log, &path, &content)
+}
+
+/// Pre-marks the path as ours, writes it, then records `Tu`. The pre-mark closes the
+/// race where the watcher reports the write before `record_own` runs.
+pub fn write_text_logged(root: &Path, log: &ActivityLog, path: &str, content: &str) -> Result<()> {
+    let rel = join_rel(&rel_parts(path).unwrap_or_default());
+    log.mark_own(&rel);
+    write_text_in(root, path, content)?;
+    log.record_own(&rel);
     Ok(())
+}
+
+/// Child `name` of `dir` as a relative path (best effort, for pre-marking only).
+fn premark_path(dir: &str, name: &str) -> String {
+    let mut parts = rel_parts(dir).unwrap_or_default();
+    parts.push(name.to_string());
+    join_rel(&parts)
 }
 
 #[tauri::command]
 pub fn create_space(state: State<AppState>, log: State<ActivityLog>, name: String) -> Result<String> {
+    log.mark_own_tree(&name);
     let rel = create_space_in(&state.root(), &name)?;
     log.record_own_tree(&rel);
     Ok(rel)
@@ -636,6 +652,8 @@ pub fn create_space(state: State<AppState>, log: State<ActivityLog>, name: Strin
 
 #[tauri::command]
 pub fn create_page(state: State<AppState>, log: State<ActivityLog>, dir: String, name: String) -> Result<String> {
+    log.mark_own(&premark_path(&dir, &name));
+    log.mark_own(&premark_path(&dir, &format!("{name}.md")));
     let rel = create_page_in(&state.root(), &dir, &name)?;
     log.record_own(&rel);
     Ok(rel)
@@ -643,6 +661,8 @@ pub fn create_page(state: State<AppState>, log: State<ActivityLog>, dir: String,
 
 #[tauri::command]
 pub fn create_board(state: State<AppState>, log: State<ActivityLog>, dir: String, name: String) -> Result<String> {
+    log.mark_own(&premark_path(&dir, &name));
+    log.mark_own(&premark_path(&dir, &format!("{name}.canvas")));
     let rel = create_board_in(&state.root(), &dir, &name)?;
     log.record_own(&rel);
     Ok(rel)
@@ -650,6 +670,7 @@ pub fn create_board(state: State<AppState>, log: State<ActivityLog>, dir: String
 
 #[tauri::command]
 pub fn create_folder(state: State<AppState>, log: State<ActivityLog>, dir: String, name: String) -> Result<String> {
+    log.mark_own_tree(&premark_path(&dir, &name));
     let rel = create_folder_in(&state.root(), &dir, &name)?;
     log.record_own_tree(&rel);
     Ok(rel)
@@ -657,8 +678,11 @@ pub fn create_folder(state: State<AppState>, log: State<ActivityLog>, dir: Strin
 
 #[tauri::command]
 pub fn rename_entry(state: State<AppState>, log: State<ActivityLog>, path: String, new_name: String) -> Result<String> {
-    let new = rename_entry_in(&state.root(), &path, &new_name)?;
     let old = join_rel(&rel_parts(&path).unwrap_or_default());
+    log.mark_own_tree(&old);
+    let parent = old.rsplit_once('/').map_or("", |(p, _)| p);
+    log.mark_own_tree(&premark_path(parent, &new_name));
+    let new = rename_entry_in(&state.root(), &path, &new_name)?;
     if old != new {
         log.record_move_own(&old, &new);
     }
@@ -1345,5 +1369,23 @@ mod tests {
         fs::write(&to, "mío").unwrap();
         assert!(copy_recursive(&from, &to).is_err());
         assert_eq!(fs::read_to_string(&to).unwrap(), "mío");
+    }
+
+    #[test]
+    fn write_text_logged_records_tu_and_shields_the_echo() {
+        use crate::activity::{Actor, Clock};
+        use std::sync::atomic::{AtomicU64, Ordering};
+        use std::sync::Arc;
+        let (d, root) = ws();
+        fs::create_dir(root.join("Ropa")).unwrap();
+        let t = Arc::new(AtomicU64::new(5_000));
+        let t2 = t.clone();
+        let clock: Clock = Arc::new(move || t2.load(Ordering::SeqCst));
+        let log = ActivityLog::load(d.path().join("cfg.json"), &root, clock, None);
+        write_text_logged(&root, &log, "Ropa/n.md", "hola").unwrap();
+        assert_eq!(fs::read_to_string(root.join("Ropa/n.md")).unwrap(), "hola");
+        t.store(6_000, Ordering::SeqCst);
+        log.ingest(&["Ropa/n.md".into()], |_| true, Actor::Claude);
+        assert_eq!(log.snapshot()["Ropa/n.md"].by, Actor::Tu);
     }
 }

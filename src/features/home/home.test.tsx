@@ -120,11 +120,39 @@ describe("card navigation", () => {
     mocked.activity.mockResolvedValue({});
     useApp.setState({
       currentDir: "Ropa",
-      activity: { "Ropa/Plan.canvas": { at: NOW - 2 * 3600_000, by: "claude-cel" } },
+      activity: { "Ropa/Plan.canvas": { at: NOW - 5 * 60_000, by: "claude-cel" } },
     });
     render(<DocumentPane />);
-    expect(screen.getByText("hace 2 h · Claude desde el cel")).toBeInTheDocument();
+    expect(screen.getByText("hace 5 min · Claude desde el cel")).toBeInTheDocument();
     expect(screen.getByText("1 pizarra")).toBeInTheDocument(); // Clientes folder card
+    expect(screen.getByText("hace 5 min · Claude desde el cel")).toHaveAttribute(
+      "title",
+      "Se atribuye al cel porque el control remoto estaba activo; puede haber sido otro programa.",
+    );
+  });
+
+  it("hedges the screen-reader text for the cel and has no tooltip for other actors", () => {
+    useApp.setState({
+      currentDir: "Ropa",
+      activity: { "Ropa/Plan.canvas": { at: NOW - 5 * 60_000, by: "claude-cel" }, "Ropa/Notas.md": { at: NOW - 3 * 86400_000, by: "claude" } },
+    });
+    vi.useFakeTimers({ now: NOW, toFake: ["Date"] });
+    render(<DocumentPane />);
+    expect(screen.getByText("Claude (o el cel) lo cambió y todavía no lo abres")).toBeInTheDocument();
+    expect(screen.getByText("Claude lo cambió y todavía no lo abres")).toBeInTheDocument();
+    expect(screen.getByText("hace 3 días · Claude")).not.toHaveAttribute("title");
+  });
+
+  it("a stale log entry shows time only and no dot on the card", () => {
+    vi.useFakeTimers({ now: NOW, toFake: ["Date"] });
+    useApp.setState({
+      currentDir: "Ropa",
+      activity: { "Ropa/Plan.canvas": { at: NOW - 9 * 3600_000, by: "claude" } },
+    });
+    const { container } = render(<DocumentPane />);
+    expect(screen.getByText("hace 5 min")).toBeInTheDocument();
+    expect(screen.queryByText(/Claude$/)).not.toBeInTheDocument();
+    expect(container.querySelectorAll(".card-dot")).toHaveLength(0);
   });
 
   it("shows the empty state of a fresh workspace and creates the first space", async () => {
@@ -141,14 +169,15 @@ describe("card navigation", () => {
 });
 
 describe("unseen dot", () => {
+  const PLAN_AT = NOW - 5 * 60_000; // equals the tree mtime: the log entry is fresh
   const dot = (container: HTMLElement) => container.querySelectorAll(".card-dot").length;
 
   it("appears for claude changes after the last open, disappears on open and stays gone", async () => {
     useApp.setState({
       currentDir: "Ropa",
       activity: {
-        "Ropa/Plan.canvas": { at: 1000, by: "claude" },
-        "Ropa/Notas.md": { at: 1000, by: "tu" },
+        "Ropa/Plan.canvas": { at: PLAN_AT, by: "claude" },
+        "Ropa/Notas.md": { at: PLAN_AT, by: "tu" },
       },
     });
     const { container, rerender } = render(<DocumentPane />);
@@ -160,7 +189,7 @@ describe("unseen dot", () => {
     rerender(<DocumentPane />);
     expect(dot(container)).toBe(0);
     // an unrelated activity refresh does not bring it back
-    mocked.activity.mockResolvedValue({ "Ropa/Plan.canvas": { at: 1000, by: "claude" } });
+    mocked.activity.mockResolvedValue({ "Ropa/Plan.canvas": { at: PLAN_AT, by: "claude" } });
     await act(() => s().refreshActivity());
     expect(dot(container)).toBe(0);
   });
@@ -168,7 +197,7 @@ describe("unseen dot", () => {
   it("a folder shows the dot when a descendant changed by claude unseen", () => {
     useApp.setState({
       currentDir: "Ropa",
-      activity: { "Ropa/Clientes/Daring Martin.canvas": { at: 5, by: "claude-cel" } },
+      activity: { "Ropa/Clientes/Daring Martin.canvas": { at: NOW - 2 * 3600_000, by: "claude-cel" } },
     });
     render(<DocumentPane />);
     const folder = screen.getByRole("button", { name: /^Clientes/ }).closest(".card")!;

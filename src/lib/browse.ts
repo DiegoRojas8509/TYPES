@@ -45,9 +45,33 @@ export function activityOf(activity: Record<string, Activity>, path: string): Ac
 
 export const isClaudeActor = (a: Activity | undefined) => !!a && (a.by === "claude" || a.by === "claude-cel");
 
-export function isUnseen(activity: Record<string, Activity>, seen: Record<string, number>, path: string): boolean {
+/** Log entries older than the file's mtime by more than this are stale (edited while the app was closed). */
+export const STALE_MS = 2000;
+
+export interface Change {
+  at: number | null;
+  /** Null when only the mtime is known (no entry, or a stale one). */
+  by: Activity["by"] | null;
+  /** The log entry still describes the file's current content. */
+  fresh: boolean;
+}
+
+/** The ONE rule for "when and by whom": a stale entry is ignored in favour of `modified`, with no actor. */
+export function changeOf(a: Activity | undefined, modified: number | null | undefined): Change {
+  const mod = modified ?? null;
+  if (a && !(mod !== null && mod > a.at + STALE_MS)) return { at: a.at, by: a.by, fresh: true };
+  return { at: mod, by: null, fresh: false };
+}
+
+export function isUnseen(
+  activity: Record<string, Activity>,
+  seen: Record<string, number>,
+  path: string,
+  modified?: number | null,
+): boolean {
   const a = activityOf(activity, path);
-  return isClaudeActor(a) && a!.at > (seen[nfc(path)] ?? 0);
+  const c = changeOf(a, modified);
+  return c.fresh && isClaudeActor(a) && a!.at > (seen[nfc(path)] ?? 0);
 }
 
 export interface Summary {
@@ -70,13 +94,12 @@ export function summarize(
   let boards = 0;
   for (const f of files) {
     if (kindOf(f.path) === "canvas") boards++;
-    const a = activityOf(activity, f.path);
-    const when = a?.at ?? f.modified ?? null;
-    if (when !== null && (at === null || when > at)) {
-      at = when;
-      by = a?.by ?? null;
+    const c = changeOf(activityOf(activity, f.path), f.modified);
+    if (c.at !== null && (at === null || c.at > at)) {
+      at = c.at;
+      by = c.by;
     }
-    if (isUnseen(activity, seen, f.path)) unseen = true;
+    if (isUnseen(activity, seen, f.path, f.modified)) unseen = true;
   }
   return { at, by, unseen, boards };
 }
@@ -87,6 +110,9 @@ const ACTOR_LABEL: Record<Activity["by"], string> = {
   "claude-cel": "Claude desde el cel",
   fuera: "fuera de la app",
 };
+
+/** Why "Claude desde el cel" is only a guess (tooltip on the actor text). */
+export const CEL_NOTE = "Se atribuye al cel porque el control remoto estaba activo; puede haber sido otro programa.";
 
 /** "hace 2 h · Claude"; just the time when the actor is unknown; "" when nothing is known. */
 export function changeLine(at: number | null, by: Activity["by"] | null, now: number): string {

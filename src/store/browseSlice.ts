@@ -77,7 +77,9 @@ export const createBrowseSlice: StateCreator<AppState, [], [], BrowseSlice> = (s
   },
 
   markSeen(path) {
-    const seen = { ...get().seen, [nfc(path)]: Date.now() };
+    // A future `at` (clock skew) must not keep the dot forever.
+    const key = nfc(path);
+    const seen = { ...get().seen, [key]: Math.max(Date.now(), get().activity[key]?.at ?? 0) };
     writeSeen(seen);
     set({ seen });
   },

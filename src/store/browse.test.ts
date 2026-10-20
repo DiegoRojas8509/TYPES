@@ -64,6 +64,13 @@ describe("card navigation store", () => {
     expect(JSON.parse(localStorage.getItem("types.seen")!)["Ropa/Plan.canvas"]).toBeGreaterThan(0);
   });
 
+  it("markSeen covers a future activity time so the dot cannot stick", () => {
+    const future = Date.now() + 3600_000;
+    useApp.setState({ activity: { "Ropa/Plan.canvas": { at: future, by: "claude" } } });
+    s().markSeen("Ropa/Plan.canvas");
+    expect(s().seen["Ropa/Plan.canvas"]).toBe(future);
+  });
+
   it("navigating and opening never writes to disk", async () => {
     s().browse("Ropa");
     s().open("Ropa/Plan.canvas");

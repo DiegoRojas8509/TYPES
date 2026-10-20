@@ -171,18 +171,19 @@ impl ClaudeState {
 
     fn mark_running(&self, run_id: u32, space: &str) {
         let first = space.split('/').find(|s| !s.is_empty() && *s != ".").unwrap_or("");
-        self.spaces().insert(run_id, first.to_string());
+        self.spaces().insert(run_id, crate::activity::nfc(first));
     }
 
     /// True while a chat message runs in space folder `space`, or ended less than
     /// `GRACE_MS` before `now` (late watcher echoes still belong to it).
     pub fn is_running_in(&self, space: &str, now: u64) -> bool {
-        if self.spaces().values().any(|s| s == space) {
+        let space = crate::activity::nfc(space);
+        if self.spaces().values().any(|s| *s == space) {
             return true;
         }
         let mut ended = self.ended.lock().unwrap_or_else(|e| e.into_inner());
         ended.retain(|_, at| now.saturating_sub(*at) < GRACE_MS);
-        ended.get(space).is_some_and(|at| now.saturating_sub(*at) < GRACE_MS)
+        ended.get(&space).is_some_and(|at| now.saturating_sub(*at) < GRACE_MS)
     }
 
     /// Cleans up a finished run: forgets the child and the running marker and
@@ -372,6 +373,14 @@ mod tests {
         assert!(st.is_running_in("Ropa", 0));
         st.spaces().remove(&2);
         assert!(!st.is_running_in("Ropa", 0));
+    }
+
+    #[test]
+    fn accented_space_matches_in_nfd_and_nfc() {
+        let st = ClaudeState::default();
+        st.mark_running(1, "Dise\u{6e}\u{303}o"); // NFD from the frontend
+        assert!(st.is_running_in("Diseño", 0)); // NFC from the watcher
+        assert!(st.is_running_in("Dise\u{6e}\u{303}o", 0));
     }
 
     #[test]

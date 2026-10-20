@@ -20,6 +20,7 @@ export const FolderCard = memo(function FolderCard({ node, now }: { node: TreeNo
       }
       title={node.name}
       lines={[plural(info.boards, "pizarra", "pizarras"), changeLine(info.at, info.by, now)]}
+      actor={info.by}
       unseen={info.unseen}
       onOpen={() => useApp.getState().browse(node.path)}
     />

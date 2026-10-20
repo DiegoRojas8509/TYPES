@@ -1,6 +1,6 @@
 //! Watches the workspace root and reports debounced, relative changes.
 
-use crate::activity::{classify, ActivityLog};
+use crate::activity::{classify, nfc, ActivityLog};
 use crate::claude::ClaudeState;
 use crate::error::{AppError, Result};
 use crate::remote::RemoteState;
@@ -160,22 +160,30 @@ fn flush(
     }
 }
 
-/// Records who is behind a batch of changes that the app did not make itself.
+/// Records who is behind a batch of content changes that the app did not make itself.
+/// `is_running_in` receives the NFC first path segment (the space).
+pub fn attribute_batch(
+    log: &ActivityLog,
+    root: &Path,
+    paths: &[String],
+    is_running_in: impl Fn(&str) -> bool,
+    remote_on: bool,
+) {
+    let space_of = |p: &String| nfc(p.split('/').next().unwrap_or(""));
+    // Group by space so each path asks about its own folder.
+    for space in paths.iter().map(space_of).collect::<BTreeSet<_>>() {
+        let batch: Vec<String> = paths.iter().filter(|p| space_of(p) == space).cloned().collect();
+        let actor = classify(is_running_in(&space), remote_on);
+        log.ingest(&batch, |p| std::fs::symlink_metadata(root.join(p)).is_ok(), actor);
+    }
+}
+
 fn attribute(app: &AppHandle, root: &Path, paths: &[String]) {
     let claude = app.state::<ClaudeState>();
     let remote_on = app.state::<RemoteState>().is_on();
     let log = app.state::<ActivityLog>();
     let clock = crate::activity::system_clock();
-    // Group by space so each path asks about its own folder.
-    for space in paths.iter().map(|p| p.split('/').next().unwrap_or("")).collect::<BTreeSet<_>>() {
-        let batch: Vec<String> = paths
-            .iter()
-            .filter(|p| p.split('/').next() == Some(space))
-            .cloned()
-            .collect();
-        let actor = classify(claude.is_running_in(space, (clock)()), remote_on);
-        log.ingest(&batch, |p| std::fs::symlink_metadata(root.join(p)).is_ok(), actor);
-    }
+    attribute_batch(&log, root, paths, |space| claude.is_running_in(space, (clock)()), remote_on);
 }
 
 /// Tauri-managed slot holding the live watcher.
@@ -276,5 +284,100 @@ mod tests {
         let got = collect(&rx, 2);
         assert!(got.contains(&"visible.md".to_string()), "got {got:?}");
         assert!(got.iter().all(|p| !p.contains('.') || p == "visible.md"), "got {got:?}");
+    }
+
+    mod attribution {
+        use super::*;
+        use crate::activity::{Activity, Actor, Clock};
+        use std::sync::atomic::{AtomicU64, Ordering};
+        use std::sync::Arc;
+
+        fn log_in(dir: &Path) -> (ActivityLog, Arc<AtomicU64>) {
+            let t = Arc::new(AtomicU64::new(10_000));
+            let t2 = t.clone();
+            let clock: Clock = Arc::new(move || t2.load(Ordering::SeqCst));
+            (ActivityLog::load(dir.join("cfg").join("a.json"), dir, clock, None), t)
+        }
+
+        fn touch(dir: &Path, rels: &[&str]) {
+            for r in rels {
+                let p = dir.join(r);
+                std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+                std::fs::write(p, "x").unwrap();
+            }
+        }
+
+        fn paths(p: &[&str]) -> Vec<String> {
+            p.iter().map(|s| s.to_string()).collect()
+        }
+
+        #[test]
+        fn own_write_with_remote_on_stays_tu() {
+            let d = tempfile::tempdir().unwrap();
+            touch(d.path(), &["Ropa/n.md"]);
+            let (log, _) = log_in(d.path());
+            log.record_own("Ropa/n.md");
+            attribute_batch(&log, d.path(), &paths(&["Ropa/n.md"]), |_| false, true);
+            assert_eq!(log.snapshot()["Ropa/n.md"].by, Actor::Tu);
+        }
+
+        #[test]
+        fn echo_after_own_write_within_window_stays_tu() {
+            let d = tempfile::tempdir().unwrap();
+            touch(d.path(), &["Ropa/n.md"]);
+            let (log, t) = log_in(d.path());
+            log.record_own("Ropa/n.md");
+            t.store(11_900, Ordering::SeqCst);
+            attribute_batch(&log, d.path(), &paths(&["Ropa/n.md"]), |_| true, true);
+            assert_eq!(log.snapshot()["Ropa/n.md"], Activity { at: 10_000, by: Actor::Tu });
+        }
+
+        #[test]
+        fn outside_write_with_remote_on_is_claude_cel() {
+            let d = tempfile::tempdir().unwrap();
+            touch(d.path(), &["Ropa/n.md"]);
+            let (log, _) = log_in(d.path());
+            attribute_batch(&log, d.path(), &paths(&["Ropa/n.md"]), |_| false, true);
+            assert_eq!(log.snapshot()["Ropa/n.md"].by, Actor::ClaudeCel);
+        }
+
+        #[test]
+        fn chat_running_in_one_space_splits_by_space() {
+            let d = tempfile::tempdir().unwrap();
+            touch(d.path(), &["Ropa/a.md", "Otro/b.md"]);
+            let (log, _) = log_in(d.path());
+            attribute_batch(&log, d.path(), &paths(&["Ropa/a.md", "Otro/b.md"]), |s| s == "Ropa", true);
+            let snap = log.snapshot();
+            assert_eq!(snap["Ropa/a.md"].by, Actor::Claude);
+            assert_eq!(snap["Otro/b.md"].by, Actor::ClaudeCel);
+        }
+
+        #[test]
+        fn accented_space_matches_the_running_chat_in_nfd_and_nfc() {
+            let d = tempfile::tempdir().unwrap();
+            touch(d.path(), &["Diseño/a.md"]);
+            let (log, _) = log_in(d.path());
+            let nfd = "Dise\u{6e}\u{303}o"; // n + combining tilde
+            let running = nfc(&nfd);
+            assert_ne!(nfd, "Diseño");
+            attribute_batch(&log, d.path(), &paths(&[&format!("{nfd}/a.md")]), |s| s == running, false);
+            assert!(log.snapshot().values().all(|a| a.by == Actor::Claude), "{:?}", log.snapshot());
+        }
+
+        #[test]
+        fn metadata_only_events_are_never_attributed() {
+            use notify::event::{MetadataKind, ModifyKind};
+            let d = tempfile::tempdir().unwrap();
+            touch(d.path(), &["Ropa/n.md"]);
+            let (log, _) = log_in(d.path());
+            let roots = vec![d.path().to_path_buf()];
+            let ev = notify::Event::new(EventKind::Modify(ModifyKind::Metadata(MetadataKind::Extended)))
+                .add_path(d.path().join("Ropa/n.md"));
+            let (mut all, mut content) = (BTreeSet::new(), BTreeSet::new());
+            collect_event(&roots, &ev, &mut all, &mut content);
+            let content: Vec<String> = content.into_iter().collect();
+            attribute_batch(&log, d.path(), &content, |_| true, true);
+            assert!(log.snapshot().is_empty());
+        }
     }
 }
