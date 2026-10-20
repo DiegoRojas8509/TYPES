@@ -10,6 +10,8 @@ use std::time::SystemTime;
 use tauri::State;
 
 const MAX_NODES: usize = 200;
+/// Boards bigger than this get an empty thumbnail instead of being parsed.
+const MAX_BYTES: u64 = 20 * 1024 * 1024;
 const MAX_CACHE: usize = 512;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -40,6 +42,7 @@ pub fn preview_from_json(text: &str) -> BoardPreview {
         return BoardPreview::default();
     };
     let num = |n: &serde_json::Value, k: &str| n.get(k).and_then(|x| x.as_f64()).filter(|x| x.is_finite());
+    // (origin x, origin y, |w|, |h|, kind); origin is the top-left even for negative sizes.
     let mut raw: Vec<(f64, f64, f64, f64, String)> = Vec::new();
     for n in nodes {
         let (Some(x), Some(y), Some(w), Some(h)) =
@@ -51,7 +54,7 @@ pub fn preview_from_json(text: &str) -> BoardPreview {
             continue;
         }
         let kind = n.get("type").and_then(|t| t.as_str()).unwrap_or("").to_string();
-        raw.push((x, y, w, h, kind));
+        raw.push((x.min(x + w), y.min(y + h), w.abs(), h.abs(), kind));
         if raw.len() >= MAX_NODES {
             break;
         }
@@ -59,10 +62,10 @@ pub fn preview_from_json(text: &str) -> BoardPreview {
     if raw.is_empty() {
         return BoardPreview::default();
     }
-    let min_x = raw.iter().map(|n| n.0.min(n.0 + n.2)).fold(f64::INFINITY, f64::min);
-    let max_x = raw.iter().map(|n| n.0.max(n.0 + n.2)).fold(f64::NEG_INFINITY, f64::max);
-    let min_y = raw.iter().map(|n| n.1.min(n.1 + n.3)).fold(f64::INFINITY, f64::min);
-    let max_y = raw.iter().map(|n| n.1.max(n.1 + n.3)).fold(f64::NEG_INFINITY, f64::max);
+    let min_x = raw.iter().map(|n| n.0).fold(f64::INFINITY, f64::min);
+    let max_x = raw.iter().map(|n| n.0 + n.2).fold(f64::NEG_INFINITY, f64::max);
+    let min_y = raw.iter().map(|n| n.1).fold(f64::INFINITY, f64::min);
+    let max_y = raw.iter().map(|n| n.1 + n.3).fold(f64::NEG_INFINITY, f64::max);
     let span = |lo: f64, hi: f64| {
         let s = hi - lo;
         if s.is_finite() && s > 0.0 { s } else { 1.0 }
@@ -73,8 +76,8 @@ pub fn preview_from_json(text: &str) -> BoardPreview {
         .map(|(x, y, w, h, kind)| PreviewNode {
             x: ((x - min_x) / sx) as f32,
             y: ((y - min_y) / sy) as f32,
-            w: (w.abs() / sx) as f32,
-            h: (h.abs() / sy) as f32,
+            w: (w / sx) as f32,
+            h: (h / sy) as f32,
             kind,
         })
         .collect();
@@ -90,6 +93,9 @@ pub fn board_preview_in(cache: &PreviewCache, root: &Path, rel: &str) -> Result<
     let Ok(md) = std::fs::metadata(&abs) else {
         return Ok(BoardPreview::default());
     };
+    if md.len() > MAX_BYTES {
+        return Ok(BoardPreview::default());
+    }
     let key: Key = (abs.to_string_lossy().into_owned(), md.modified().ok(), md.len());
     if let Some(hit) = cache.0.lock().unwrap_or_else(|e| e.into_inner()).get(&key) {
         return Ok(hit.clone());
@@ -205,5 +211,27 @@ mod tests {
         assert!(board_preview_in(&cache, dir.path(), "a.canvas").unwrap().nodes.is_empty());
         board(dir.path(), "a.canvas", r#"{"nodes":[{"type":"text","x":0,"y":0,"width":1,"height":1}]}"#);
         assert_eq!(board_preview_in(&cache, dir.path(), "a.canvas").unwrap().nodes.len(), 1);
+    }
+
+    #[test]
+    fn negative_sizes_stay_inside_unit_box() {
+        let p = preview_from_json(
+            r#"{"nodes":[{"type":"text","x":100,"y":100,"width":-50,"height":-20},
+                          {"type":"text","x":200,"y":200,"width":10,"height":10}]}"#,
+        );
+        for n in &p.nodes {
+            assert!(n.x >= 0.0 && n.y >= 0.0 && n.x + n.w <= 1.0 + 1e-6 && n.y + n.h <= 1.0 + 1e-6, "{n:?}");
+            assert!(n.w >= 0.0 && n.h >= 0.0);
+        }
+    }
+
+    #[test]
+    fn huge_board_file_is_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = PreviewCache::default();
+        let f = std::fs::File::create(dir.path().join("big.canvas")).unwrap();
+        f.set_len(MAX_BYTES + 1).unwrap();
+        assert!(board_preview_in(&cache, dir.path(), "big.canvas").unwrap().nodes.is_empty());
+        assert_eq!(cache.len(), 0);
     }
 }

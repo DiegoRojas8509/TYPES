@@ -112,6 +112,7 @@ pub fn get_settings(state: State<AppState>) -> Settings {
 pub fn set_workspace_root(app: AppHandle, state: State<AppState>, path: String) -> Result<Settings> {
     let settings = set_workspace_root_in(&state, path)?;
     grant_asset_scope(&app, &settings.workspace_root);
+    app.state::<crate::activity::ActivityLog>().clear();
     crate::watcher::restart(&app);
     Ok(settings)
 }

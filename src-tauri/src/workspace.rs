@@ -42,7 +42,7 @@ fn is_taken(path: &Path) -> bool {
 
 /// Splits a path string into safe `Normal` components. Anything else
 /// (`..`, absolute, backslashes, NUL, prefixes) escapes the workspace.
-fn rel_parts(rel: &str) -> Result<Vec<String>> {
+pub(crate) fn rel_parts(rel: &str) -> Result<Vec<String>> {
     if rel.contains('\0') || rel.contains('\\') {
         return Err(AppError::OutsideWorkspace);
     }
@@ -630,7 +630,7 @@ pub fn write_text(state: State<AppState>, log: State<ActivityLog>, path: String,
 #[tauri::command]
 pub fn create_space(state: State<AppState>, log: State<ActivityLog>, name: String) -> Result<String> {
     let rel = create_space_in(&state.root(), &name)?;
-    log.record_own(&rel);
+    log.record_own_tree(&rel);
     Ok(rel)
 }
 
@@ -651,7 +651,7 @@ pub fn create_board(state: State<AppState>, log: State<ActivityLog>, dir: String
 #[tauri::command]
 pub fn create_folder(state: State<AppState>, log: State<ActivityLog>, dir: String, name: String) -> Result<String> {
     let rel = create_folder_in(&state.root(), &dir, &name)?;
-    log.record_own(&rel);
+    log.record_own_tree(&rel);
     Ok(rel)
 }
 
@@ -674,8 +674,10 @@ pub fn delete_entry(state: State<AppState>, log: State<ActivityLog>, path: Strin
 
 #[tauri::command]
 pub fn restore_entry(state: State<AppState>, log: State<ActivityLog>, original: String, trashed: String) -> Result<String> {
+    // Pre-mark: a cross-device restore copies for a while.
+    log.mark_own_tree(&join_rel(&rel_parts(&original).unwrap_or_default()));
     let rel = restore_entry_in(&state.root(), &original, &trashed)?;
-    log.record_own(&rel);
+    log.record_own_tree(&rel);
     Ok(rel)
 }
 
@@ -693,6 +695,10 @@ pub fn list_images(state: State<AppState>, dir: String) -> Result<Vec<String>> {
 
 #[tauri::command]
 pub fn import_files(state: State<AppState>, log: State<ActivityLog>, dest_dir: String, sources: Vec<String>) -> Result<Vec<String>> {
+    // Pre-mark the destination so a long copy is not attributed to anyone else.
+    let mut dest = rel_parts(&dest_dir).unwrap_or_default();
+    dest.push(IMAGES_DIR.to_string());
+    log.mark_own_tree(&join_rel(&dest));
     let out = import_files_in(&state.root(), &dest_dir, &sources)?;
     for rel in &out {
         log.record_own(rel);

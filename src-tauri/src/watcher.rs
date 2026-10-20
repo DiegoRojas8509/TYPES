@@ -52,6 +52,42 @@ fn is_relevant(kind: &EventKind) -> bool {
     !matches!(kind, EventKind::Access(_) | EventKind::Other)
 }
 
+/// One debounced batch. `paths` is everything that changed (for `fs-changed`);
+/// `content` leaves out paths that only had metadata/access events (xattrs,
+/// chmod, "opened" marks), which are not real activity.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Batch {
+    pub paths: Vec<String>,
+    pub content: Vec<String>,
+}
+
+/// True for events that can change what a file contains or the tree itself.
+fn is_content(kind: &EventKind) -> bool {
+    use notify::event::ModifyKind;
+    is_relevant(kind) && !matches!(kind, EventKind::Modify(ModifyKind::Metadata(_)))
+}
+
+/// Folds one event into the pending sets.
+fn collect_event(
+    roots: &[PathBuf],
+    event: &notify::Event,
+    pending: &mut BTreeSet<String>,
+    content: &mut BTreeSet<String>,
+) {
+    if !is_relevant(&event.kind) {
+        return;
+    }
+    let is_content = is_content(&event.kind);
+    for p in &event.paths {
+        if let Some(rel) = relativize(roots, p) {
+            if is_content {
+                content.insert(rel.clone());
+            }
+            pending.insert(rel);
+        }
+    }
+}
+
 pub struct FsWatcher {
     // Dropping the watcher closes the channel, which ends the debounce thread.
     _watcher: notify::RecommendedWatcher,
@@ -59,7 +95,7 @@ pub struct FsWatcher {
 }
 
 /// Starts watching `root`; `on_change` receives each debounced, sorted batch.
-pub fn start(root: &Path, on_change: impl Fn(Vec<String>) + Send + 'static) -> Result<FsWatcher> {
+pub fn start(root: &Path, on_change: impl Fn(Batch) + Send + 'static) -> Result<FsWatcher> {
     let mut roots = vec![root.to_path_buf()];
     if let Ok(canon) = root.canonicalize()
         && canon != root
@@ -77,6 +113,7 @@ pub fn start(root: &Path, on_change: impl Fn(Vec<String>) + Send + 'static) -> R
 
     let thread = std::thread::spawn(move || {
         let mut pending: BTreeSet<String> = BTreeSet::new();
+        let mut content: BTreeSet<String> = BTreeSet::new();
         let mut first_at: Option<Instant> = None;
         loop {
             let wait = if pending.is_empty() {
@@ -87,23 +124,19 @@ pub fn start(root: &Path, on_change: impl Fn(Vec<String>) + Send + 'static) -> R
             match rx.recv_timeout(wait) {
                 Ok(Ok(event)) => {
                     if is_relevant(&event.kind) {
-                        for p in &event.paths {
-                            if let Some(rel) = relativize(&roots, p) {
-                                pending.insert(rel);
-                            }
-                        }
+                        collect_event(&roots, &event, &mut pending, &mut content);
                         if !pending.is_empty() && first_at.is_none() {
                             first_at = Some(Instant::now());
                         }
                     }
                     if first_at.is_some_and(|t| t.elapsed() >= MAX_WAIT) {
-                        flush(&mut pending, &mut first_at, &on_change);
+                        flush(&mut pending, &mut content, &mut first_at, &on_change);
                     }
                 }
                 Ok(Err(_)) => {}
-                Err(RecvTimeoutError::Timeout) => flush(&mut pending, &mut first_at, &on_change),
+                Err(RecvTimeoutError::Timeout) => flush(&mut pending, &mut content, &mut first_at, &on_change),
                 Err(RecvTimeoutError::Disconnected) => {
-                    flush(&mut pending, &mut first_at, &on_change);
+                    flush(&mut pending, &mut content, &mut first_at, &on_change);
                     break;
                 }
             }
@@ -112,10 +145,18 @@ pub fn start(root: &Path, on_change: impl Fn(Vec<String>) + Send + 'static) -> R
     Ok(FsWatcher { _watcher: watcher, _thread: thread })
 }
 
-fn flush(pending: &mut BTreeSet<String>, first_at: &mut Option<Instant>, on_change: &impl Fn(Vec<String>)) {
+fn flush(
+    pending: &mut BTreeSet<String>,
+    content: &mut BTreeSet<String>,
+    first_at: &mut Option<Instant>,
+    on_change: &impl Fn(Batch),
+) {
     *first_at = None;
     if !pending.is_empty() {
-        on_change(std::mem::take(pending).into_iter().collect());
+        on_change(Batch {
+            paths: std::mem::take(pending).into_iter().collect(),
+            content: std::mem::take(content).into_iter().collect(),
+        });
     }
 }
 
@@ -124,6 +165,7 @@ fn attribute(app: &AppHandle, root: &Path, paths: &[String]) {
     let claude = app.state::<ClaudeState>();
     let remote_on = app.state::<RemoteState>().is_on();
     let log = app.state::<ActivityLog>();
+    let clock = crate::activity::system_clock();
     // Group by space so each path asks about its own folder.
     for space in paths.iter().map(|p| p.split('/').next().unwrap_or("")).collect::<BTreeSet<_>>() {
         let batch: Vec<String> = paths
@@ -131,7 +173,7 @@ fn attribute(app: &AppHandle, root: &Path, paths: &[String]) {
             .filter(|p| p.split('/').next() == Some(space))
             .cloned()
             .collect();
-        let actor = classify(claude.is_running_in(space), remote_on);
+        let actor = classify(claude.is_running_in(space, (clock)()), remote_on);
         log.ingest(&batch, |p| std::fs::symlink_metadata(root.join(p)).is_ok(), actor);
     }
 }
@@ -147,9 +189,9 @@ pub fn restart(app: &AppHandle) {
     app.state::<ActivityLog>().prune(&root);
     let started = start(&root, {
         let root = root.clone();
-        move |paths| {
-            attribute(&handle, &root, &paths);
-            let _ = handle.emit("fs-changed", FsChanged { paths });
+        move |batch| {
+            attribute(&handle, &root, &batch.content);
+            let _ = handle.emit("fs-changed", FsChanged { paths: batch.paths });
         }
     });
     let slot = app.state::<WatcherSlot>();
@@ -168,12 +210,12 @@ mod tests {
     use super::*;
     use std::sync::mpsc::Receiver;
 
-    fn collect(rx: &Receiver<Vec<String>>, secs: u64) -> Vec<String> {
+    fn collect(rx: &Receiver<Batch>, secs: u64) -> Vec<String> {
         let deadline = Instant::now() + Duration::from_secs(secs);
         let mut all = Vec::new();
         while let Some(left) = deadline.checked_duration_since(Instant::now()) {
             if let Ok(batch) = rx.recv_timeout(left) {
-                all.extend(batch);
+                all.extend(batch.paths);
             }
         }
         all
@@ -191,6 +233,20 @@ mod tests {
     }
 
     #[test]
+    fn metadata_only_events_are_not_content() {
+        use notify::event::{AccessKind, DataChange, MetadataKind, ModifyKind};
+        let roots = vec![PathBuf::from("/r")];
+        let ev = |kind| notify::Event::new(kind).add_path(PathBuf::from("/r/Ropa/a.md"));
+        let (mut all, mut content) = (BTreeSet::new(), BTreeSet::new());
+        collect_event(&roots, &ev(EventKind::Modify(ModifyKind::Metadata(MetadataKind::Extended))), &mut all, &mut content);
+        collect_event(&roots, &ev(EventKind::Access(AccessKind::Any)), &mut all, &mut content);
+        assert_eq!(all.len(), 1, "metadata still reaches fs-changed");
+        assert!(content.is_empty());
+        collect_event(&roots, &ev(EventKind::Modify(ModifyKind::Data(DataChange::Any))), &mut all, &mut content);
+        assert!(content.contains("Ropa/a.md"));
+    }
+
+    #[test]
     fn watcher_reports_relative_path_on_write() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::create_dir(dir.path().join("Ropa")).unwrap();
@@ -201,7 +257,7 @@ mod tests {
         .unwrap();
         std::thread::sleep(Duration::from_millis(300));
         std::fs::write(dir.path().join("Ropa").join("Notas.md"), "hola").unwrap();
-        let got = rx.recv_timeout(Duration::from_secs(2)).expect("no event within 2s");
+        let got = rx.recv_timeout(Duration::from_secs(2)).expect("no event within 2s").paths;
         assert!(got.contains(&"Ropa/Notas.md".to_string()), "got {got:?}");
     }
 

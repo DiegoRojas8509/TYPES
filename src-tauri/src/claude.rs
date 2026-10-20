@@ -153,7 +153,12 @@ pub struct ClaudeState {
     runs: Mutex<HashMap<u32, Arc<Mutex<Child>>>>,
     /// run id -> space folder (first path segment) the message is working in.
     spaces: Mutex<HashMap<u32, String>>,
+    /// space -> when its last run ended (ms), for the late-echo grace period.
+    ended: Mutex<HashMap<String, u64>>,
 }
+
+/// File events can arrive this long after the process exits.
+pub const GRACE_MS: u64 = 1500;
 
 impl ClaudeState {
     fn runs(&self) -> std::sync::MutexGuard<'_, HashMap<u32, Arc<Mutex<Child>>>> {
@@ -169,9 +174,39 @@ impl ClaudeState {
         self.spaces().insert(run_id, first.to_string());
     }
 
-    /// True while a chat message is running in space folder `space`.
-    pub fn is_running_in(&self, space: &str) -> bool {
-        self.spaces().values().any(|s| s == space)
+    /// True while a chat message runs in space folder `space`, or ended less than
+    /// `GRACE_MS` before `now` (late watcher echoes still belong to it).
+    pub fn is_running_in(&self, space: &str, now: u64) -> bool {
+        if self.spaces().values().any(|s| s == space) {
+            return true;
+        }
+        let mut ended = self.ended.lock().unwrap_or_else(|e| e.into_inner());
+        ended.retain(|_, at| now.saturating_sub(*at) < GRACE_MS);
+        ended.get(space).is_some_and(|at| now.saturating_sub(*at) < GRACE_MS)
+    }
+
+    /// Cleans up a finished run: forgets the child and the running marker and
+    /// starts the grace period. Must not wait on anything (readers may be held open).
+    fn end_run(&self, run_id: u32, now: u64) {
+        self.runs().remove(&run_id);
+        if let Some(space) = self.spaces().remove(&run_id) {
+            self.ended.lock().unwrap_or_else(|e| e.into_inner()).insert(space, now);
+        }
+    }
+
+    /// Polls until the child exits (never holding its lock while sleeping, so
+    /// `claude_stop` can kill), then cleans up immediately, before readers are joined.
+    fn reap(&self, run_id: u32, child: &Arc<Mutex<Child>>, now: &dyn Fn() -> u64) -> Option<i32> {
+        let code = loop {
+            let status = child.lock().unwrap_or_else(|e| e.into_inner()).try_wait();
+            match status {
+                Ok(Some(s)) => break s.code(),
+                Ok(None) => std::thread::sleep(Duration::from_millis(40)),
+                Err(_) => break None,
+            }
+        };
+        self.end_run(run_id, now());
+        code
     }
 
     /// Kills every running child (used on app exit). The waiter threads reap them.
@@ -304,19 +339,11 @@ pub fn claude_send(
     // reaps the child, drains the readers, then announces the exit.
     let app2 = app.clone();
     std::thread::spawn(move || {
-        let code = loop {
-            let status = child.lock().unwrap_or_else(|e| e.into_inner()).try_wait();
-            match status {
-                Ok(Some(s)) => break s.code(),
-                Ok(None) => std::thread::sleep(Duration::from_millis(40)),
-                Err(_) => break None,
-            }
-        };
+        let clock = crate::activity::system_clock();
+        let code = app2.state::<ClaudeState>().reap(run_id, &child, &*clock);
         for t in [out_thread, err_thread].into_iter().flatten() {
             let _ = t.join();
         }
-        app2.state::<ClaudeState>().runs().remove(&run_id);
-        app2.state::<ClaudeState>().spaces().remove(&run_id);
         emit(&app2, ClaudeEvent::Exit { run_id, code });
     });
     Ok(run_id)
@@ -339,12 +366,44 @@ mod tests {
         let st = ClaudeState::default();
         st.mark_running(1, "Ropa");
         st.mark_running(2, "Ropa/sub");
-        assert!(st.is_running_in("Ropa"));
-        assert!(!st.is_running_in("Otro"));
+        assert!(st.is_running_in("Ropa", 0));
+        assert!(!st.is_running_in("Otro", 0));
         st.spaces().remove(&1);
-        assert!(st.is_running_in("Ropa"));
+        assert!(st.is_running_in("Ropa", 0));
         st.spaces().remove(&2);
-        assert!(!st.is_running_in("Ropa"));
+        assert!(!st.is_running_in("Ropa", 0));
+    }
+
+    #[test]
+    fn grace_period_after_exit() {
+        let st = ClaudeState::default();
+        st.mark_running(1, "Ropa");
+        st.end_run(1, 10_000);
+        assert!(st.is_running_in("Ropa", 11_000));
+        assert!(!st.is_running_in("Ropa", 12_000));
+        assert!(!st.is_running_in("Otro", 10_500));
+    }
+
+    #[test]
+    fn reap_cleans_up_without_waiting_for_readers() {
+        // The child exits at once while a background grandchild keeps stdout open.
+        let st = ClaudeState::default();
+        let mut child = Command::new("sh")
+            .args(["-c", "sleep 3 & exit 0"])
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let _held_pipe = child.stdout.take();
+        let child = Arc::new(Mutex::new(child));
+        st.runs().insert(7, child.clone());
+        st.mark_running(7, "Ropa");
+        let t = std::time::Instant::now();
+        let code = st.reap(7, &child, &|| 5_000);
+        assert_eq!(code, Some(0));
+        assert!(t.elapsed() < Duration::from_secs(2));
+        assert!(st.runs().is_empty() && st.spaces().is_empty());
+        assert!(st.is_running_in("Ropa", 5_500)); // grace
+        assert!(!st.is_running_in("Ropa", 7_000));
     }
 
     fn fake_ext(dir: &Path, name: &str) -> PathBuf {
