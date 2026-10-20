@@ -199,6 +199,11 @@ impl RemoteState {
         self.lock().status.clone()
     }
 
+    /// True while the phone remote control is connected.
+    pub fn is_on(&self) -> bool {
+        matches!(self.status(), RemoteStatus::On { .. })
+    }
+
     /// Sets the status and tells the UI, only when it really changed.
     fn set(&self, app: &AppHandle, next: RemoteStatus) {
         let changed = {

@@ -151,11 +151,27 @@ pub fn classify_line(run_id: u32, line: &str) -> Option<ClaudeEvent> {
 pub struct ClaudeState {
     next_id: AtomicU32,
     runs: Mutex<HashMap<u32, Arc<Mutex<Child>>>>,
+    /// run id -> space folder (first path segment) the message is working in.
+    spaces: Mutex<HashMap<u32, String>>,
 }
 
 impl ClaudeState {
     fn runs(&self) -> std::sync::MutexGuard<'_, HashMap<u32, Arc<Mutex<Child>>>> {
         self.runs.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn spaces(&self) -> std::sync::MutexGuard<'_, HashMap<u32, String>> {
+        self.spaces.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn mark_running(&self, run_id: u32, space: &str) {
+        let first = space.split('/').find(|s| !s.is_empty() && *s != ".").unwrap_or("");
+        self.spaces().insert(run_id, first.to_string());
+    }
+
+    /// True while a chat message is running in space folder `space`.
+    pub fn is_running_in(&self, space: &str) -> bool {
+        self.spaces().values().any(|s| s == space)
     }
 
     /// Kills every running child (used on app exit). The waiter threads reap them.
@@ -258,6 +274,7 @@ pub fn claude_send(
     let run_id = claude.next_id.fetch_add(1, Ordering::SeqCst) + 1;
     let child = Arc::new(Mutex::new(child));
     claude.runs().insert(run_id, child.clone());
+    claude.mark_running(run_id, &space);
 
     let emit = move |app: &AppHandle, ev: ClaudeEvent| {
         let _ = app.emit("claude-event", ev);
@@ -299,6 +316,7 @@ pub fn claude_send(
             let _ = t.join();
         }
         app2.state::<ClaudeState>().runs().remove(&run_id);
+        app2.state::<ClaudeState>().spaces().remove(&run_id);
         emit(&app2, ClaudeEvent::Exit { run_id, code });
     });
     Ok(run_id)
@@ -315,6 +333,19 @@ pub fn claude_stop(claude: State<ClaudeState>, run_id: u32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn running_space_is_tracked_per_run() {
+        let st = ClaudeState::default();
+        st.mark_running(1, "Ropa");
+        st.mark_running(2, "Ropa/sub");
+        assert!(st.is_running_in("Ropa"));
+        assert!(!st.is_running_in("Otro"));
+        st.spaces().remove(&1);
+        assert!(st.is_running_in("Ropa"));
+        st.spaces().remove(&2);
+        assert!(!st.is_running_in("Ropa"));
+    }
 
     fn fake_ext(dir: &Path, name: &str) -> PathBuf {
         let bin = dir.join(name).join("resources").join("native-binary").join("claude");

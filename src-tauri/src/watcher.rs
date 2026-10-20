@@ -1,6 +1,9 @@
 //! Watches the workspace root and reports debounced, relative changes.
 
+use crate::activity::{classify, ActivityLog};
+use crate::claude::ClaudeState;
 use crate::error::{AppError, Result};
+use crate::remote::RemoteState;
 use crate::settings::AppState;
 use notify::{EventKind, RecursiveMode, Watcher};
 use serde::Serialize;
@@ -116,6 +119,23 @@ fn flush(pending: &mut BTreeSet<String>, first_at: &mut Option<Instant>, on_chan
     }
 }
 
+/// Records who is behind a batch of changes that the app did not make itself.
+fn attribute(app: &AppHandle, root: &Path, paths: &[String]) {
+    let claude = app.state::<ClaudeState>();
+    let remote_on = app.state::<RemoteState>().is_on();
+    let log = app.state::<ActivityLog>();
+    // Group by space so each path asks about its own folder.
+    for space in paths.iter().map(|p| p.split('/').next().unwrap_or("")).collect::<BTreeSet<_>>() {
+        let batch: Vec<String> = paths
+            .iter()
+            .filter(|p| p.split('/').next() == Some(space))
+            .cloned()
+            .collect();
+        let actor = classify(claude.is_running_in(space), remote_on);
+        log.ingest(&batch, |p| std::fs::symlink_metadata(root.join(p)).is_ok(), actor);
+    }
+}
+
 /// Tauri-managed slot holding the live watcher.
 #[derive(Default)]
 pub struct WatcherSlot(Mutex<Option<FsWatcher>>);
@@ -124,8 +144,13 @@ pub struct WatcherSlot(Mutex<Option<FsWatcher>>);
 pub fn restart(app: &AppHandle) {
     let root = app.state::<AppState>().root();
     let handle = app.clone();
-    let started = start(&root, move |paths| {
-        let _ = handle.emit("fs-changed", FsChanged { paths });
+    app.state::<ActivityLog>().prune(&root);
+    let started = start(&root, {
+        let root = root.clone();
+        move |paths| {
+            attribute(&handle, &root, &paths);
+            let _ = handle.emit("fs-changed", FsChanged { paths });
+        }
     });
     let slot = app.state::<WatcherSlot>();
     let mut guard = slot.0.lock().unwrap_or_else(|e| e.into_inner());

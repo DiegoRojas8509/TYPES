@@ -25,6 +25,29 @@ export interface TreeNode {
   path: string;
   kind: NodeKind;
   children: TreeNode[];
+  /** Last modification, ms since the epoch. */
+  modified?: number;
+}
+
+/** Who made a change: Diego, the chat, Claude from the phone, or something outside the app. */
+export type Actor = "tu" | "claude" | "claude-cel" | "fuera";
+
+export interface Activity {
+  at: number;
+  by: Actor;
+}
+
+export interface PreviewNode {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  kind: string;
+}
+
+/** Board outline normalized to 0..1; `nodes` is empty for empty or unreadable boards. */
+export interface BoardPreview {
+  nodes: PreviewNode[];
 }
 
 export interface ClaudeStatus {
@@ -102,6 +125,10 @@ export const api = {
   saveAttachment: (space: string, fileName: string, bytes: Uint8Array | number[]) =>
     invoke<string>("save_attachment", { space, fileName, bytes: Array.from(bytes) }),
 
+  /** Last change per workspace-relative path. */
+  activity: () => invoke<Record<string, Activity>>("activity"),
+  boardPreview: (path: string) => invoke<BoardPreview>("board_preview", { path }),
+
   claudeStatus: () => invoke<ClaudeStatus>("claude_status"),
   /** Resolves with the run id used by `claude-event`. */
   /** `board` is the open `.canvas` relative to the space folder (Claude's cwd), or null. */
@@ -139,6 +166,10 @@ export function openExternal(url: string): Promise<void> {
 
 export function onFsChanged(cb: (payload: FsChangedPayload) => void): Promise<UnlistenFn> {
   return listen<FsChangedPayload>("fs-changed", (e) => cb(e.payload));
+}
+
+export function onActivityChanged(cb: () => void): Promise<UnlistenFn> {
+  return listen("activity-changed", () => cb());
 }
 
 export function onClaudeEvent(cb: (event: ClaudeEvent) => void): Promise<UnlistenFn> {

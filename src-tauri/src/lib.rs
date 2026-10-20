@@ -1,5 +1,7 @@
+mod activity;
 mod claude;
 mod error;
+mod preview;
 mod remote;
 mod settings;
 mod templates;
@@ -7,7 +9,7 @@ mod watcher;
 mod workspace;
 
 use std::path::PathBuf;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -23,6 +25,18 @@ pub fn run() {
             }
             settings::grant_asset_scope(app.handle(), &settings.workspace_root);
             app.manage(settings::AppState::new(config_file, settings));
+            let log = activity::ActivityLog::load(
+                activity::default_file(&app.state::<settings::AppState>()),
+                &app.state::<settings::AppState>().root(),
+                activity::system_clock(),
+                activity::default_debounce(),
+            );
+            let handle = app.handle().clone();
+            log.set_notifier(move || {
+                let _ = handle.emit("activity-changed", ());
+            });
+            app.manage(log);
+            app.manage(preview::PreviewCache::default());
             app.manage(watcher::WatcherSlot::default());
             app.manage(claude::ClaudeState::default());
             app.manage(remote::RemoteState::default());
@@ -40,6 +54,8 @@ pub fn run() {
             remote::remote_start,
             remote::remote_stop,
             remote::remote_trust,
+            activity::activity,
+            preview::board_preview,
             workspace::list_tree,
             workspace::read_text,
             workspace::write_text,
@@ -61,6 +77,7 @@ pub fn run() {
             if let tauri::RunEvent::Exit = event {
                 app.state::<claude::ClaudeState>().kill_all();
                 app.state::<remote::RemoteState>().stop(app);
+                let _ = app.state::<activity::ActivityLog>().flush();
             }
         });
 }

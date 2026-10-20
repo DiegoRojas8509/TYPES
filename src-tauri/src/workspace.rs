@@ -3,6 +3,7 @@ use crate::settings::AppState;
 use serde::Serialize;
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
+use crate::activity::ActivityLog;
 use tauri::State;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -18,6 +19,8 @@ pub struct TreeNode {
     pub path: String,
     pub kind: NodeKind,
     pub children: Vec<TreeNode>,
+    /// Last modification, milliseconds since the epoch; `None` when unknown.
+    pub modified: Option<u64>,
 }
 
 /// Name of the per-folder image store. Always written in NFC.
@@ -247,11 +250,17 @@ fn build_children(dir: &Path, rel_parts: &[String]) -> std::io::Result<Vec<TreeN
         let mut parts = rel_parts.to_vec();
         parts.push(name.clone());
         let path = join_rel(&parts);
+        let modified = entry
+            .metadata()
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_millis() as u64);
         if ft.is_dir() {
             let children = build_children(&entry.path(), &parts).unwrap_or_default();
-            nodes.push(TreeNode { name, path, kind: NodeKind::Dir, children });
+            nodes.push(TreeNode { name, path, kind: NodeKind::Dir, children, modified });
         } else if ft.is_file() {
-            nodes.push(TreeNode { name, path, kind: NodeKind::File, children: Vec::new() });
+            nodes.push(TreeNode { name, path, kind: NodeKind::File, children: Vec::new(), modified });
         }
     }
     nodes.sort_by(|a, b| {
@@ -612,48 +621,69 @@ pub fn read_text(state: State<AppState>, path: String) -> Result<String> {
 }
 
 #[tauri::command]
-pub fn write_text(state: State<AppState>, path: String, content: String) -> Result<()> {
-    write_text_in(&state.root(), &path, &content)
+pub fn write_text(state: State<AppState>, log: State<ActivityLog>, path: String, content: String) -> Result<()> {
+    write_text_in(&state.root(), &path, &content)?;
+    log.record_own(&join_rel(&rel_parts(&path).unwrap_or_default()));
+    Ok(())
 }
 
 #[tauri::command]
-pub fn create_space(state: State<AppState>, name: String) -> Result<String> {
-    create_space_in(&state.root(), &name)
+pub fn create_space(state: State<AppState>, log: State<ActivityLog>, name: String) -> Result<String> {
+    let rel = create_space_in(&state.root(), &name)?;
+    log.record_own(&rel);
+    Ok(rel)
 }
 
 #[tauri::command]
-pub fn create_page(state: State<AppState>, dir: String, name: String) -> Result<String> {
-    create_page_in(&state.root(), &dir, &name)
+pub fn create_page(state: State<AppState>, log: State<ActivityLog>, dir: String, name: String) -> Result<String> {
+    let rel = create_page_in(&state.root(), &dir, &name)?;
+    log.record_own(&rel);
+    Ok(rel)
 }
 
 #[tauri::command]
-pub fn create_board(state: State<AppState>, dir: String, name: String) -> Result<String> {
-    create_board_in(&state.root(), &dir, &name)
+pub fn create_board(state: State<AppState>, log: State<ActivityLog>, dir: String, name: String) -> Result<String> {
+    let rel = create_board_in(&state.root(), &dir, &name)?;
+    log.record_own(&rel);
+    Ok(rel)
 }
 
 #[tauri::command]
-pub fn create_folder(state: State<AppState>, dir: String, name: String) -> Result<String> {
-    create_folder_in(&state.root(), &dir, &name)
+pub fn create_folder(state: State<AppState>, log: State<ActivityLog>, dir: String, name: String) -> Result<String> {
+    let rel = create_folder_in(&state.root(), &dir, &name)?;
+    log.record_own(&rel);
+    Ok(rel)
 }
 
 #[tauri::command]
-pub fn rename_entry(state: State<AppState>, path: String, new_name: String) -> Result<String> {
-    rename_entry_in(&state.root(), &path, &new_name)
+pub fn rename_entry(state: State<AppState>, log: State<ActivityLog>, path: String, new_name: String) -> Result<String> {
+    let new = rename_entry_in(&state.root(), &path, &new_name)?;
+    let old = join_rel(&rel_parts(&path).unwrap_or_default());
+    if old != new {
+        log.record_move_own(&old, &new);
+    }
+    Ok(new)
 }
 
 #[tauri::command]
-pub fn delete_entry(state: State<AppState>, path: String) -> Result<DeletedEntry> {
-    delete_entry_with(&state.root(), &path, system_trash)
+pub fn delete_entry(state: State<AppState>, log: State<ActivityLog>, path: String) -> Result<DeletedEntry> {
+    let deleted = delete_entry_with(&state.root(), &path, system_trash)?;
+    log.remove_own(&deleted.original);
+    Ok(deleted)
 }
 
 #[tauri::command]
-pub fn restore_entry(state: State<AppState>, original: String, trashed: String) -> Result<String> {
-    restore_entry_in(&state.root(), &original, &trashed)
+pub fn restore_entry(state: State<AppState>, log: State<ActivityLog>, original: String, trashed: String) -> Result<String> {
+    let rel = restore_entry_in(&state.root(), &original, &trashed)?;
+    log.record_own(&rel);
+    Ok(rel)
 }
 
 #[tauri::command]
-pub fn save_image(state: State<AppState>, dir: String, file_name: String, bytes: Vec<u8>) -> Result<String> {
-    save_image_in(&state.root(), &dir, &file_name, &bytes)
+pub fn save_image(state: State<AppState>, log: State<ActivityLog>, dir: String, file_name: String, bytes: Vec<u8>) -> Result<String> {
+    let rel = save_image_in(&state.root(), &dir, &file_name, &bytes)?;
+    log.record_own(&rel);
+    Ok(rel)
 }
 
 #[tauri::command]
@@ -662,13 +692,19 @@ pub fn list_images(state: State<AppState>, dir: String) -> Result<Vec<String>> {
 }
 
 #[tauri::command]
-pub fn import_files(state: State<AppState>, dest_dir: String, sources: Vec<String>) -> Result<Vec<String>> {
-    import_files_in(&state.root(), &dest_dir, &sources)
+pub fn import_files(state: State<AppState>, log: State<ActivityLog>, dest_dir: String, sources: Vec<String>) -> Result<Vec<String>> {
+    let out = import_files_in(&state.root(), &dest_dir, &sources)?;
+    for rel in &out {
+        log.record_own(rel);
+    }
+    Ok(out)
 }
 
 #[tauri::command]
-pub fn save_attachment(state: State<AppState>, space: String, file_name: String, bytes: Vec<u8>) -> Result<String> {
-    save_attachment_in(&state.root(), &space, &file_name, &bytes)
+pub fn save_attachment(state: State<AppState>, log: State<ActivityLog>, space: String, file_name: String, bytes: Vec<u8>) -> Result<String> {
+    let rel = save_attachment_in(&state.root(), &space, &file_name, &bytes)?;
+    log.record_own(&rel);
+    Ok(rel)
 }
 
 #[cfg(test)]
@@ -681,6 +717,17 @@ mod tests {
         let root = d.path().join("ws");
         ensure_root(&root).unwrap();
         (d, root)
+    }
+
+    #[test]
+    fn tree_nodes_carry_modified_time() {
+        let (_d, root) = ws();
+        fs::create_dir(root.join("Ropa")).unwrap();
+        fs::write(root.join("Ropa").join("a.md"), "x").unwrap();
+        let tree = build_tree(&root).unwrap();
+        let ropa = tree.iter().find(|n| n.name == "Ropa").unwrap();
+        assert!(ropa.modified.is_some_and(|m| m > 1_500_000_000_000));
+        assert!(ropa.children[0].modified.is_some_and(|m| m > 1_500_000_000_000));
     }
 
     #[test]
