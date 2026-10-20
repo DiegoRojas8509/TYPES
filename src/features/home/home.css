@@ -314,3 +314,13 @@ button.card-main:focus-visible {
 .breadcrumb .icon-btn:disabled {
   opacity: 0.35;
 }
+.breadcrumb-slot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-left: auto;
+  flex: none;
+}
+.breadcrumb-slot:empty {
+  display: none;
+}

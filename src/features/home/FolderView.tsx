@@ -1,6 +1,5 @@
-import { useState } from "react";
 import { findNode } from "../../lib/browse";
-import { countClaudeFiles, getShowClaudeFiles, isClaudeFile, isImagesDir, setShowClaudeFiles } from "../../lib/claudeFiles";
+import { countClaudeFiles, isClaudeFile, isImagesDir } from "../../lib/claudeFiles";
 import { kindOf } from "../../lib/paths";
 import { useApp } from "../../store/app";
 import { IconBoard, IconFolderPlus } from "../shell/icons";
@@ -9,6 +8,7 @@ import { CardMenu } from "./CardMenu";
 import { CreateCard } from "./CreateCard";
 import { FileCard } from "./FileCard";
 import { FolderCard } from "./FolderCard";
+import { useContextFilesItem } from "./contextFilesItem";
 import { gridKeyDown } from "./typing";
 import { useNow } from "./useNow";
 
@@ -17,7 +17,8 @@ export function FolderView({ dir }: { dir: string }) {
   const tree = useApp((s) => s.tree);
   const loaded = useApp((s) => s.treeLoaded);
   const now = useNow();
-  const [showClaude, setShow] = useState(getShowClaudeFiles);
+  const showClaude = useApp((s) => s.showContextFiles);
+  const contextItem = useContextFilesItem();
 
   const node = findNode(tree, dir);
   if (!node || node.kind !== "dir") {
@@ -38,16 +39,7 @@ export function FolderView({ dir }: { dir: string }) {
         {hidden > 0 && (
           <CardMenu
             label={`Opciones de ${node.name}`}
-            items={[
-              {
-                label: "Mostrar archivos de contexto e imágenes",
-                checked: showClaude,
-                onSelect: () => {
-                  setShowClaudeFiles(!showClaude);
-                  setShow(!showClaude);
-                },
-              },
-            ]}
+            items={[contextItem]}
           />
         )}
       </header>

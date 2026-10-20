@@ -57,7 +57,7 @@ export function useEntryActions(node: TreeNode): EntryActions {
       if (e.key === "F2") {
         e.preventDefault();
         setRenaming(true);
-      } else if (e.key === "Delete") {
+      } else if (e.key === "Delete" || e.key === "Backspace") {
         e.preventDefault();
         setConfirming(true);
       }

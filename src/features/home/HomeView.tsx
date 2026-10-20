@@ -1,10 +1,10 @@
-import { useState } from "react";
-import { withoutClaudeFiles, getShowClaudeFiles, setShowClaudeFiles, countClaudeFiles } from "../../lib/claudeFiles";
+import { withoutClaudeFiles, countClaudeFiles } from "../../lib/claudeFiles";
 import { useApp } from "../../store/app";
 import { CardMenu } from "./CardMenu";
 import { CreateCard } from "./CreateCard";
 import { FileCard } from "./FileCard";
 import { FolderCard } from "./FolderCard";
+import { useContextFilesItem } from "./contextFilesItem";
 import { gridKeyDown } from "./typing";
 import { useNow } from "./useNow";
 
@@ -13,7 +13,8 @@ export function HomeView() {
   const allNodes = useApp((s) => s.tree);
   const loaded = useApp((s) => s.treeLoaded);
   const now = useNow();
-  const [showClaude, setShow] = useState(getShowClaudeFiles);
+  const showClaude = useApp((s) => s.showContextFiles);
+  const contextItem = useContextFilesItem();
 
   const nodes = showClaude ? allNodes : withoutClaudeFiles(allNodes);
   const spaces = nodes.filter((n) => n.kind === "dir");
@@ -30,16 +31,7 @@ export function HomeView() {
         {hidden > 0 && (
           <CardMenu
             label="Opciones de Inicio"
-            items={[
-              {
-                label: "Mostrar archivos de contexto e imágenes",
-                checked: showClaude,
-                onSelect: () => {
-                  setShowClaudeFiles(!showClaude);
-                  setShow(!showClaude);
-                },
-              },
-            ]}
+            items={[contextItem]}
           />
         )}
       </header>

@@ -4,13 +4,12 @@ import {
   errorMessage,
   onActivityChanged,
   onFsChanged,
-  type Activity,
   type DeletedEntry,
   type Settings,
   type TreeNode,
 } from "../lib/api";
 import { nearestExistingDir } from "../lib/browse";
-import { readSeen, writeSeen } from "../lib/seenPref";
+import { createBrowseSlice, initialBrowseState, pruneSeen, renameSeenKeys, type BrowseSlice } from "./browseSlice";
 import { readSidebarCollapsed, writeSidebarCollapsed } from "../lib/sidebarPref";
 import { isWithin, parentOf, replacePrefix, spaceOf, titleOf } from "../lib/paths";
 
@@ -26,18 +25,12 @@ export interface FsChange {
   paths: string[];
 }
 
-export interface AppState {
+export interface AppState extends BrowseSlice {
   settings: Settings | null;
   tree: TreeNode[];
   treeLoaded: boolean;
   /** Workspace-relative path of the file shown in the middle pane. */
   openPath: string | null;
-  /** Folder shown when nothing is open; null = Inicio (the list of spaces). */
-  currentDir: string | null;
-  /** Last change per workspace-relative path (NFC keys), from the backend log. */
-  activity: Record<string, Activity>;
-  /** When Diego last opened each file (ms); an orange dot shows when Claude changed it after that. */
-  seen: Record<string, number>;
   /** First segment of `openPath`, or the last space selected in the sidebar. */
   activeSpace: string | null;
   /** Folder paths that are expanded in the sidebar. */
@@ -55,11 +48,6 @@ export interface AppState {
   init(): Promise<void>;
   refreshTree(): Promise<void>;
   open(path: string | null): void;
-  /** Shows a folder's cards (null = Inicio) and closes the open file. */
-  browse(dir: string | null): void;
-  /** Closes the open file (landing in its folder) or goes up one folder. */
-  back(): void;
-  refreshActivity(): Promise<void>;
   selectSpace(space: string | null): void;
   setExpanded(path: string, value: boolean): void;
   toggleExpanded(path: string): void;
@@ -85,9 +73,7 @@ export function initialState() {
     tree: [],
     treeLoaded: false,
     openPath: null,
-    currentDir: null,
-    activity: {},
-    seen: {},
+    ...initialBrowseState(),
     activeSpace: null,
     expanded: {},
     chatCollapsed: false,
@@ -99,36 +85,12 @@ export function initialState() {
   } satisfies Partial<AppState>;
 }
 
-function collectFiles(nodes: TreeNode[], into: Set<string>) {
-  for (const n of nodes) {
-    if (n.kind === "dir") collectFiles(n.children, into);
-    else into.add(n.path);
-  }
-}
-
-/** Drops `seen` entries of files that no longer exist (persisting only when something changed). */
-function pruneSeen(seen: Record<string, number>, tree: TreeNode[]): Record<string, number> {
-  const keys = Object.keys(seen);
-  if (keys.length === 0) return seen;
-  const files = new Set<string>();
-  collectFiles(tree, files);
-  if (keys.every((k) => files.has(k))) return seen;
-  const next = Object.fromEntries(keys.filter((k) => files.has(k)).map((k) => [k, seen[k]]));
-  writeSeen(next);
-  return next;
-}
-
-function renameKeys(seen: Record<string, number>, from: string, to: string): Record<string, number> {
-  const next = Object.fromEntries(Object.entries(seen).map(([k, v]) => [replacePrefix(k, from, to), v]));
-  writeSeen(next);
-  return next;
-}
-
 let noticeSeq = 0;
 let refreshSeq = 0;
 let fsSeq = 0;
 
-export const useApp = create<AppState>()((set, get) => {
+export const useApp = create<AppState>()((...slice) => {
+  const [set, get] = slice;
   /** Runs a command; on failure shows its Spanish message and returns undefined. */
   async function attempt<T>(run: () => Promise<T>): Promise<T | undefined> {
     try {
@@ -141,8 +103,8 @@ export const useApp = create<AppState>()((set, get) => {
 
   return {
     ...initialState(),
+    ...createBrowseSlice(...slice),
     sidebarCollapsed: readSidebarCollapsed(),
-    seen: readSeen(),
 
     async init() {
       const settings = await attempt(() => api.getSettings());
@@ -176,40 +138,8 @@ export const useApp = create<AppState>()((set, get) => {
       }
       // A root-level file (e.g. the workspace CLAUDE.md) belongs to no space: keep the last one.
       const space = path.includes("/") ? spaceOf(path) : null;
-      const seen = { ...get().seen, [path]: Date.now() };
-      writeSeen(seen);
-      set((s) => ({ openPath: path, currentDir: parentOf(path) || null, seen, activeSpace: space ?? s.activeSpace }));
-    },
-
-    browse(dir) {
-      set((s) => ({ openPath: null, currentDir: dir || null, activeSpace: dir ? spaceOf(dir) : s.activeSpace }));
-    },
-
-    back() {
-      const { openPath, currentDir } = get();
-      const from = openPath !== null ? parentOf(openPath) : currentDir !== null ? parentOf(currentDir) : null;
-      if (openPath === null && currentDir === null) return;
-      set({ openPath: null, currentDir: from || null });
-    },
-
-    async refreshActivity() {
-      let activity: Record<string, Activity>;
-      try {
-        activity = await api.activity();
-      } catch {
-        return; // the log is a nicety: cards just show less
-      }
-      set((s) => {
-        // What Diego is looking at right now counts as seen, so no dot appears behind his back.
-        const open = s.openPath;
-        const at = open ? activity[open.normalize("NFC")]?.at : undefined;
-        if (open && at !== undefined && at > (s.seen[open] ?? 0)) {
-          const seen = { ...s.seen, [open]: at };
-          writeSeen(seen);
-          return { activity, seen };
-        }
-        return { activity };
-      });
+      get().markSeen(path);
+      set((s) => ({ openPath: path, currentDir: parentOf(path) || null, activeSpace: space ?? s.activeSpace }));
     },
 
     selectSpace(space) {
@@ -285,7 +215,7 @@ export const useApp = create<AppState>()((set, get) => {
         for (const [k, v] of Object.entries(s.expanded)) expanded[replacePrefix(k, path, next)] = v;
         return {
           expanded,
-          seen: renameKeys(s.seen, path, next),
+          seen: renameSeenKeys(s.seen, path, next),
           currentDir: s.currentDir === null ? null : replacePrefix(s.currentDir, path, next),
           openPath: s.openPath === null ? null : replacePrefix(s.openPath, path, next),
           activeSpace: s.activeSpace === null ? null : replacePrefix(s.activeSpace, path, next),

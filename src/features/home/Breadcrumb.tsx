@@ -9,7 +9,7 @@ interface Crumb {
 }
 
 /** "Types › Ropa › Clientes › Daring Martin": every segment but the last goes there; ← goes up one level. */
-export function Breadcrumb({ dir, file }: { dir: string | null; file?: string | null }) {
+export function Breadcrumb({ dir, file, slotRef }: { dir: string | null; file?: string | null; slotRef?: (el: HTMLElement | null) => void }) {
   const browse = useApp((s) => s.browse);
   const back = useApp((s) => s.back);
 
@@ -54,6 +54,7 @@ export function Breadcrumb({ dir, file }: { dir: string | null; file?: string | 
           </Fragment>
         ))}
       </ol>
+      <span className="breadcrumb-slot" ref={slotRef} />
     </nav>
   );
 }

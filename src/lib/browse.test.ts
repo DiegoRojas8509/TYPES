@@ -18,7 +18,7 @@ describe("browse helpers", () => {
     const nfd = "Ropa/Clientes/María.canvas";
     const act = { "Ropa/Clientes/María.canvas": { at: 50, by: "claude" as const } };
     expect(isUnseen(act, {}, nfd)).toBe(true);
-    expect(isUnseen(act, { [nfd]: 50 }, nfd)).toBe(false);
+    expect(isUnseen(act, { "Ropa/Clientes/María.canvas": 50 }, nfd)).toBe(false);
   });
 
   it("a folder summary comes from its files and ignores CLAUDE.md", () => {

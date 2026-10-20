@@ -36,6 +36,7 @@ import {
 import { flowNodeTypes, nodeTypes } from "./nodes";
 import { ImagePanel } from "./ImagePanel";
 import { useBoardImages } from "./useBoardImages";
+import { HeaderControls } from "../../lib/headerSlot";
 
 const isKnown = (type: string) => Object.prototype.hasOwnProperty.call(nodeTypes, type);
 const DELETE_KEYS = ["Backspace", "Delete"];
@@ -237,7 +238,7 @@ function Board({ path }: { path: string }) {
 
   return (
     <div className="board" ref={rootRef}>
-      <div className="pane-header pane-header-end">
+      <HeaderControls>
         <span className="board-bar">
           {doc.status !== "error" && (
             <span className={`save-status is-${doc.status}`} role="status">
@@ -260,7 +261,7 @@ function Board({ path }: { path: string }) {
             </button>
           )}
         </span>
-      </div>
+      </HeaderControls>
       {doc.status === "conflict" && (
         <div className="banner banner-warn" role="alert">
           <span>Esta pizarra cambió en el disco mientras la editabas. ¿Qué versión quieres conservar?</span>

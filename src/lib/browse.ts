@@ -36,16 +36,18 @@ export function contentFiles(node: TreeNode): TreeNode[] {
   return out;
 }
 
-/** Activity keys are NFC; tree paths may arrive NFD. */
+export const nfc = (path: string) => path.normalize("NFC");
+
+/** Activity and seen keys are NFC; tree paths may arrive NFD. */
 export function activityOf(activity: Record<string, Activity>, path: string): Activity | undefined {
-  return activity[path.normalize("NFC")];
+  return activity[nfc(path)];
 }
 
 export const isClaudeActor = (a: Activity | undefined) => !!a && (a.by === "claude" || a.by === "claude-cel");
 
 export function isUnseen(activity: Record<string, Activity>, seen: Record<string, number>, path: string): boolean {
   const a = activityOf(activity, path);
-  return isClaudeActor(a) && a!.at > (seen[path] ?? 0);
+  return isClaudeActor(a) && a!.at > (seen[nfc(path)] ?? 0);
 }
 
 export interface Summary {

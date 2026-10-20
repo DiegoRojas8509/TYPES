@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { errorMessage, openWithDefaultApp } from "../../lib/api";
 import { absolutePath, baseName } from "../../lib/paths";
 import { useApp } from "../../store/app";
+import { HeaderControls } from "../../lib/headerSlot";
 import { useTextFile } from "./useTextFile";
 
 /**
@@ -48,7 +49,7 @@ export function HtmlViewer({ path }: { path: string }) {
 
   return (
     <div className="viewer">
-      <div className="pane-header pane-header-end">
+      <HeaderControls>
         <span className="viewer-actions">
           <button type="button" className="btn" onClick={file.reload}>
             Recargar
@@ -57,7 +58,7 @@ export function HtmlViewer({ path }: { path: string }) {
             Abrir en el navegador
           </button>
         </span>
-      </div>
+      </HeaderControls>
       {file.error && (
         <div className="banner banner-warn" role="alert">
           <span>{file.error}</span>

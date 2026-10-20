@@ -83,9 +83,10 @@ describe("card navigation store", () => {
 
   it("claude activity on the board being viewed does not leave an unseen dot behind", async () => {
     s().open("Ropa/Plan.canvas");
-    mocked.activity.mockResolvedValueOnce({ "Ropa/Plan.canvas": { at: Date.now() + 5000, by: "claude" } });
+    const at = Date.now() + 5000;
+    mocked.activity.mockResolvedValueOnce({ "Ropa/Plan.canvas": { at, by: "claude" } });
     await s().refreshActivity();
-    expect(s().seen["Ropa/Plan.canvas"]).toBeGreaterThanOrEqual(Date.now() + 5000);
+    expect(s().seen["Ropa/Plan.canvas"]).toBe(at);
   });
 
   it("falls back to the nearest existing ancestor when currentDir disappears", async () => {
@@ -108,6 +109,40 @@ describe("card navigation store", () => {
     mocked.listTree.mockResolvedValue([d("Ropa", [f("Ropa/Plan.canvas")])]);
     await s().deleteEntry("Ropa/Cartera");
     expect(s().currentDir).toBe("Ropa");
+  });
+
+  it("an older activity response cannot overwrite a newer one", async () => {
+    let slow!: (v: Record<string, { at: number; by: "claude" }>) => void;
+    mocked.activity.mockReturnValueOnce(new Promise((r) => (slow = r)));
+    mocked.activity.mockResolvedValueOnce({ "Ropa/Plan.canvas": { at: 9, by: "claude" } });
+    const first = s().refreshActivity();
+    await s().refreshActivity();
+    slow({ "Ropa/Plan.canvas": { at: 1, by: "claude" } });
+    await first;
+    expect(s().activity["Ropa/Plan.canvas"].at).toBe(9);
+  });
+
+  it("a transient empty tree does not wipe seen", async () => {
+    useApp.setState({ seen: { "Ropa/Plan.canvas": 1 } });
+    mocked.listTree.mockResolvedValue([]);
+    await s().refreshTree();
+    expect(s().seen).toEqual({ "Ropa/Plan.canvas": 1 });
+  });
+
+  it("stores seen keys in NFC, also when read back from disk", () => {
+    s().open("Ropa/Mari\u0301a.canvas");
+    expect(Object.keys(s().seen)).toEqual(["Ropa/María.canvas"]);
+    localStorage.setItem("types.seen", JSON.stringify({ "Ropa/Mari\u0301a.canvas": 4 }));
+    return import("../lib/seenPref").then(({ readSeen }) => expect(readSeen()).toEqual({ "Ropa/María.canvas": 4 }));
+  });
+
+  it("showContextFiles lives in the store and persists", () => {
+    expect(s().showContextFiles).toBe(false);
+    s().setShowContextFiles(true);
+    expect(s().showContextFiles).toBe(true);
+    expect(localStorage.getItem("types.showClaudeFiles")).toBe("1");
+    s().setShowContextFiles(false);
+    expect(localStorage.getItem("types.showClaudeFiles")).toBe("0");
   });
 
   it("drops seen entries of vanished files on tree refresh", async () => {

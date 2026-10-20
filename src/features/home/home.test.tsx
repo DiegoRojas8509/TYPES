@@ -26,10 +26,22 @@ vi.mock("../board/BoardView", () => ({ BoardView: ({ path }: { path: string }) =
     board:{path}
   </div>
 ) }));
+const thumbRenders: Record<string, number> = {};
+vi.mock("./BoardThumb", async (orig) => {
+  const actual = await orig<typeof import("./BoardThumb")>();
+  return {
+    ...actual,
+    BoardThumb: (p: { path: string; modified?: number }) => {
+      thumbRenders[p.path] = (thumbRenders[p.path] ?? 0) + 1;
+      return <actual.BoardThumb {...p} />;
+    },
+  };
+});
 vi.mock("../editor/Editor", () => ({ MarkdownEditor: ({ path }: { path: string }) => <div>editor:{path}</div> }));
 
 import { api } from "../../lib/api";
 import { initialState, useApp } from "../../store/app";
+import { Sidebar } from "../sidebar/Sidebar";
 import { DocumentPane } from "../shell/DocumentPane";
 import { clearThumbCache } from "./BoardThumb";
 
@@ -52,9 +64,10 @@ const s = () => useApp.getState();
 
 beforeEach(() => {
   vi.clearAllMocks();
+  for (const k of Object.keys(thumbRenders)) delete thumbRenders[k];
   localStorage.clear();
   clearThumbCache();
-  useApp.setState({ ...initialState(), tree, treeLoaded: true });
+  useApp.setState({ ...initialState(), showContextFiles: false, tree, treeLoaded: true });
   mocked.listTree.mockResolvedValue(tree);
   mocked.activity.mockResolvedValue({});
   mocked.boardPreview.mockResolvedValue({ nodes: [{ x: 0, y: 0, w: 0.4, h: 0.4, kind: "text" }] });
@@ -339,5 +352,95 @@ describe("currentDir disappearing", () => {
     mocked.listTree.mockResolvedValue([d("Ropa", [f("Ropa/Plan.canvas")])]);
     await act(() => s().refreshTree());
     expect(screen.getByRole("heading", { name: "Ropa" })).toBeInTheDocument();
+  });
+});
+
+describe("fix round 1", () => {
+  beforeEach(() => useApp.setState({ currentDir: "Ropa" }));
+
+  it("Backspace and Delete both ask to delete; neither acts inside a text field", () => {
+    render(<DocumentPane />);
+    for (const key of ["Backspace", "Delete"]) {
+      const plan = screen.getByRole("button", { name: /^Plan/ });
+      fireEvent.keyDown(plan, { key });
+      expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+    }
+    fireEvent.click(screen.getByRole("button", { name: "Carpeta" }));
+    fireEvent.keyDown(screen.getByLabelText("Nombre de la carpeta"), { key: "Backspace" });
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("Esc ignores focus in the sidebar or chat, and while a file is open", () => {
+    useApp.setState({ currentDir: "Ropa/Clientes" });
+    render(
+      <>
+        <aside className="pane-chat">
+          <button>fuera</button>
+        </aside>
+        <DocumentPane />
+      </>,
+    );
+    const outside = screen.getByRole("button", { name: "fuera" });
+    outside.focus();
+    fireEvent.keyDown(outside, { key: "Escape" });
+    expect(s().currentDir).toBe("Ropa/Clientes");
+    const card = screen.getByRole("button", { name: /^Daring Martin/ });
+    fireEvent.keyDown(card, { key: "Escape" });
+    expect(s().currentDir).toBe("Ropa");
+    act(() => s().open("Ropa/Plan.canvas"));
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(s().openPath).toBe("Ropa/Plan.canvas");
+  });
+
+  it("the dot comes back after a newer Claude edit following an open", async () => {
+    useApp.setState({ activity: { "Ropa/Plan.canvas": { at: 1000, by: "claude" } } });
+    const { container } = render(<DocumentPane />);
+    act(() => s().open("Ropa/Plan.canvas"));
+    act(() => s().back());
+    expect(container.querySelectorAll(".card-dot")).toHaveLength(0);
+    mocked.activity.mockResolvedValue({ "Ropa/Plan.canvas": { at: Date.now() + 60_000, by: "claude" } });
+    await act(() => s().refreshActivity());
+    expect(container.querySelectorAll(".card-dot")).toHaveLength(1);
+  });
+
+  it("a changed modified refetches the preview", async () => {
+    const t = (m: number) => [d("Ropa", [f("Ropa/Plan.canvas", m)])];
+    useApp.setState({ tree: t(1) });
+    render(<DocumentPane />);
+    await waitFor(() => expect(mocked.boardPreview).toHaveBeenCalledTimes(1));
+    act(() => useApp.setState({ tree: t(2) }));
+    await waitFor(() => expect(mocked.boardPreview).toHaveBeenCalledTimes(2));
+  });
+
+  it("an unrelated activity change does not re-render an unaffected card", async () => {
+    useApp.setState({ activity: { "Ropa/Plan.canvas": { at: 5, by: "tu" } } });
+    render(<DocumentPane />);
+    await act(async () => {});
+    const before = thumbRenders["Ropa/Plan.canvas"];
+    act(() =>
+      useApp.setState((st) => ({
+        activity: { ...st.activity, "Ropa/Notas.md": { at: 9, by: "claude" } },
+      })),
+    );
+    expect(thumbRenders["Ropa/Plan.canvas"]).toBe(before);
+    // identical content in fresh objects (what every IPC refresh produces) is also quiet
+    act(() => useApp.setState((st) => ({ activity: Object.fromEntries(Object.entries(st.activity).map(([k, v]) => [k, { ...v }])) })));
+    expect(thumbRenders["Ropa/Plan.canvas"]).toBe(before);
+  });
+
+  it("the context-files toggle is shared by the folder view and the sidebar", () => {
+    useApp.setState({ tree: [d("Ropa", [f("Ropa/Plan.canvas"), f("Ropa/CLAUDE.md")])], expanded: { Ropa: true } });
+    render(
+      <>
+        <Sidebar />
+        <DocumentPane />
+      </>,
+    );
+    expect(screen.queryByText("CLAUDE")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Opciones de Ropa" }));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: /Mostrar archivos de contexto/ }));
+    expect(screen.getAllByText("CLAUDE")).toHaveLength(2); // sidebar row + card
+    localStorage.removeItem("types.showClaudeFiles");
   });
 });

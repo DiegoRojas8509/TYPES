@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { TreeNode } from "../../lib/api";
-import { countClaudeFiles, getShowClaudeFiles, setShowClaudeFiles, withoutClaudeFiles } from "../../lib/claudeFiles";
+import { countClaudeFiles, withoutClaudeFiles } from "../../lib/claudeFiles";
 import { useApp } from "../../store/app";
 import { IconCode, IconPlus, IconSidebar } from "../shell/icons";
 import { ConfirmDelete } from "./ConfirmDelete";
@@ -18,7 +18,7 @@ export function Sidebar() {
 
   const [editing, setEditing] = useState<Editing | null>(null);
   const [toDelete, setToDelete] = useState<TreeNode | null>(null);
-  const [showClaude, setShowClaude] = useState(getShowClaudeFiles);
+  const showClaude = useApp((s) => s.showContextFiles);
 
   const hiddenClaude = countClaudeFiles(allNodes);
   const tree = showClaude ? allNodes : withoutClaudeFiles(allNodes);
@@ -118,8 +118,7 @@ export function Sidebar() {
               }
               aria-pressed={showClaude}
               onClick={() => {
-                setShowClaude(!showClaude);
-                setShowClaudeFiles(!showClaude);
+                app().setShowContextFiles(!showClaude);
               }}
             >
               <IconCode />

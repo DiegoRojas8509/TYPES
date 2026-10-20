@@ -25,7 +25,7 @@ async function settle() {
 
 beforeEach(() => {
   vi.useFakeTimers();
-  useApp.setState({ ...initialState(), settings: { workspaceRoot: "/Users/d/TYPES-espacios", claudePath: null } });
+  useApp.setState({ ...initialState(), showContextFiles: false, settings: { workspaceRoot: "/Users/d/TYPES-espacios", claudePath: null } });
   vi.mocked(api.readText).mockReset().mockResolvedValue("<h1>v1</h1>");
 });
 afterEach(() => vi.useRealTimers());
@@ -56,5 +56,13 @@ describe("DocumentPane", () => {
     r = await show("Ropa/precios.csv");
     expect(screen.getByRole("button", { name: "Abrir con la app predeterminada" })).toBeInTheDocument();
     expect(r.container.querySelector("iframe")).toBeNull();
+  });
+
+  it("document_pane_puts_viewer_controls_in_the_breadcrumb_bar", async () => {
+    act(() => useApp.setState({ openPath: "Ropa/dash.html" }));
+    const { container } = render(<DocumentPane />);
+    await settle();
+    expect(container.querySelector(".breadcrumb")).toContainElement(screen.getByRole("button", { name: "Recargar" }));
+    expect(container.querySelector(".pane-header")).toBeNull();
   });
 });

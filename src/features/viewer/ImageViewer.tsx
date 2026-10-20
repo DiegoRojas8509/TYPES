@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { assetUrl } from "../../lib/api";
 import { absolutePath, baseName } from "../../lib/paths";
 import { useApp } from "../../store/app";
+import { HeaderControls } from "../../lib/headerSlot";
 import { useFileVersion } from "./useFileVersion";
 
 interface Shown {
@@ -42,13 +43,13 @@ export function ImageViewer({ path }: { path: string }) {
 
   return (
     <div className="viewer">
-      <div className="pane-header pane-header-end">
+      <HeaderControls>
         {shown && (
           <span className="viewer-meta">
             {shown.width} × {shown.height} px
           </span>
         )}
-      </div>
+      </HeaderControls>
       {error && (
         <div className="banner banner-warn" role="alert">
           <span>{error}</span>

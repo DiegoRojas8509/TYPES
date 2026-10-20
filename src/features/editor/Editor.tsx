@@ -4,6 +4,7 @@ import type { Editor as TiptapEditor } from "@tiptap/core";
 import { api, assetUrl, errorMessage } from "../../lib/api";
 import { spaceOf } from "../../lib/paths";
 import { useApp } from "../../store/app";
+import { HeaderControls } from "../../lib/headerSlot";
 import { createExtensions } from "../../lib/extensions";
 import { pathFromAssetUrl, relativeSrc, resolveImageSrc, unresolveImageSrc, unsupportedSyntax } from "../../lib/markdown";
 import { SlashCommand } from "./slash";
@@ -32,13 +33,13 @@ export function MarkdownEditor({ path }: { path: string }) {
 
   return (
     <div className="editor">
-      <div className="pane-header pane-header-end">
+      <HeaderControls>
         {doc.status !== "error" && (
           <span className={`save-status is-${doc.status}`} role="status">
             {STATUS_LABEL[doc.status]}
           </span>
         )}
-      </div>
+      </HeaderControls>
       {doc.status === "conflict" && (
         <div className="banner banner-warn" role="alert">
           <span>Esta página cambió en el disco mientras la editabas. ¿Qué versión quieres conservar?</span>

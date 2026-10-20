@@ -4,6 +4,12 @@ import { useEffect } from "react";
 import { useApp } from "../../store/app";
 import { isTypingTarget } from "./typing";
 
+/** Esc belongs to the card view only: not to controls in the sidebar or the chat. */
+function inCardView(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return true; // window / document
+  return target === document.body || target === document.documentElement || target.closest(".doc-pane") !== null;
+}
+
 export function useBrowseShortcuts(): void {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -13,7 +19,7 @@ export function useBrowseShortcuts(): void {
         e.preventDefault();
         back();
       } else if (e.key === "Escape" && !e.metaKey && !e.ctrlKey && !e.altKey) {
-        if (openPath !== null || currentDir === null) return;
+        if (openPath !== null || currentDir === null || !inCardView(e.target)) return;
         if (document.querySelector('[role="alertdialog"], [role="menu"]')) return;
         back();
       }

@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { HeaderSlotContext } from "../../lib/headerSlot";
 import { kindOf, parentOf } from "../../lib/paths";
 import { useApp } from "../../store/app";
 import { BoardView } from "../board/BoardView";
@@ -18,13 +20,21 @@ import { MarkdownEditor } from "../editor/Editor";
 export function DocumentPane() {
   const openPath = useApp((s) => s.openPath);
   const currentDir = useApp((s) => s.currentDir);
+  const [slot, setSlot] = useState<HTMLElement | null>(null);
   useBrowseShortcuts();
 
   return (
-    <div className="doc-pane">
-      <Breadcrumb dir={openPath ? parentOf(openPath) || null : currentDir} file={openPath} />
-      <div className="doc-body">{openPath ? renderFile(openPath) : currentDir === null ? <HomeView /> : <FolderView dir={currentDir} />}</div>
-    </div>
+    <HeaderSlotContext.Provider value={slot}>
+      <div className="doc-pane">
+        <Breadcrumb dir={openPath ? parentOf(openPath) || null : currentDir} file={openPath} slotRef={setSlot} />
+        {/* Wait for the slot so a renderer's controls never mount inline first and then move. */}
+        {slot && (
+          <div className="doc-body">
+            {openPath ? renderFile(openPath) : currentDir === null ? <HomeView /> : <FolderView dir={currentDir} />}
+          </div>
+        )}
+      </div>
+    </HeaderSlotContext.Provider>
   );
 }
 
