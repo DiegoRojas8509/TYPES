@@ -11,7 +11,9 @@ export function contextLevel(tokens: number): ContextLevel {
 }
 
 export function formatTokens(tokens: number | null): string {
-  return tokens === null ? "—" : `${Math.round(tokens / 1000)}k`;
+  if (tokens === null) return "—";
+  // Floor, so the label never rounds across a threshold the level did not cross (99,999 -> 99k).
+  return tokens >= 1_000_000 ? `${Math.floor(tokens / 100_000) / 10}M` : `${Math.floor(tokens / 1000)}k`;
 }
 
 const MARK: Record<ContextLevel, string> = { normal: "", warning: "⚠ ", high: "⛔ " };
@@ -24,7 +26,8 @@ interface Props {
 }
 
 export function ContextMeter({ tokens, blocker }: Props) {
-  const level = tokens === null ? "normal" : contextLevel(tokens);
+  if (!tokens) return null; // brand-new conversation: nothing to measure yet
+  const level = contextLevel(tokens);
   return (
     <div className="context-meter" data-level={level}>
       <span

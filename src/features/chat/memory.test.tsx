@@ -152,17 +152,54 @@ describe("close topic: dialog", () => {
     expect(await screen.findByText(/ya está al día/)).toBeInTheDocument();
   });
 
-  it("ok:false shows the error, retry calls again, new conversation still possible", async () => {
+  it("ok:false: no «Listo», Reintentar re-runs with the same args", async () => {
     m.memoryCloseTopic.mockResolvedValueOnce(result({ ok: false, error: "El cronista no está instalado. Revisa el plugin sistema." }));
     seed();
     renderChat();
     open();
-    const alert = await screen.findByText("El cronista no está instalado. Revisa el plugin sistema.");
-    expect(alert).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Listo, abrir conversación nueva" })).toBeEnabled();
+    expect(await screen.findByText("El cronista no está instalado. Revisa el plugin sistema.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Listo, abrir conversación nueva" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Mantener esta conversación" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Reintentar" }));
     expect(await screen.findByText("Subió la tarifa del corte")).toBeInTheDocument();
     expect(m.memoryCloseTopic).toHaveBeenCalledTimes(2);
+    expect(m.memoryCloseTopic).toHaveBeenLastCalledWith("Ropa", "sess-1");
+    expect(screen.getByRole("button", { name: "Listo, abrir conversación nueva" })).toBeEnabled();
+  });
+
+  describe("after a failed save", () => {
+    async function failed() {
+      m.memoryCloseTopic.mockResolvedValue(result({ ok: false, error: "boom" }));
+      seed();
+      renderChat();
+      open();
+      await screen.findByText("boom");
+    }
+    it("discarding needs a second explicit click", async () => {
+      await failed();
+      fireEvent.click(screen.getByRole("button", { name: "Abrir nueva sin guardar" }));
+      expect(useChats.getState().conversations.Ropa.items).toHaveLength(1);
+      expect(screen.getByText("El cronista no pudo guardar el tema; lo que se habló solo está en esta conversación.")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Confirmar: se perderá esta conversación" }));
+      expect(useChats.getState().conversations.Ropa.items).toHaveLength(0);
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    });
+    it("Esc cancels the confirmation without closing the dialog", async () => {
+      await failed();
+      fireEvent.click(screen.getByRole("button", { name: "Abrir nueva sin guardar" }));
+      fireEvent.keyDown(window, { key: "Escape" });
+      expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Confirmar/ })).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Abrir nueva sin guardar" })).toBeInTheDocument();
+    });
+    it("another button cancels the confirmation", async () => {
+      await failed();
+      fireEvent.click(screen.getByRole("button", { name: "Abrir nueva sin guardar" }));
+      fireEvent.click(screen.getByRole("button", { name: "Mantener esta conversación" }));
+      expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Confirmar/ })).not.toBeInTheDocument();
+      expect(useChats.getState().conversations.Ropa.items).toHaveLength(1);
+    });
   });
 
   it("a rejected call (concurrent) shows its message", async () => {
@@ -186,6 +223,7 @@ describe("close topic: dialog", () => {
     expect(closeBtn()).toBeDisabled();
     await act(async () => done(result()));
     expect(closeBtn()).toBeEnabled();
+    expect(document.activeElement).toBe(document.querySelector(".composer textarea"));
   });
 
   it("«abrir conversación nueva» resets the conversation and closes", async () => {
@@ -237,19 +275,27 @@ describe("memory badge", () => {
     await act(async () => {});
     expect(screen.queryByText(/Memoria de Ropa cargada/)).not.toBeInTheDocument();
   });
-  it("refetches ~8 s and ~30 s after a run ends", async () => {
+  it("refetches ~8 s and ~30 s after a run ends, even once the badge has unmounted", async () => {
     vi.useFakeTimers();
-    seed({ running: true });
-    render(<MemoryBadge space="Ropa" />);
+    seed({ sessionId: null, withItems: false });
+    renderChat();
     await act(async () => {});
-    expect(m.memoryStatus).toHaveBeenCalledTimes(1);
-    act(() => useChats.setState({ conversations: { Ropa: { ...useChats.getState().conversations.Ropa, running: false } } }));
+    expect(screen.getByText(/Memoria de Ropa cargada/)).toBeInTheDocument();
+    const patch = (p: object) => act(() => useChats.setState({ conversations: { Ropa: { ...useChats.getState().conversations.Ropa, ...p } } }));
+    patch({ running: true, items: [{ id: 1, type: "user", text: "hola", attachments: [] }] });
+    expect(screen.queryByText(/Memoria de Ropa cargada/)).not.toBeInTheDocument();
+    act(() => useMemoryUi.getState().openPanel()); // a live consumer of the tick
+    await act(async () => {});
+    patch({ running: false });
+    const tick0 = useMemoryUi.getState().tick;
+    const calls0 = m.memoryStatus.mock.calls.length;
     await act(async () => void vi.advanceTimersByTime(7_900));
-    expect(m.memoryStatus).toHaveBeenCalledTimes(1);
+    expect(useMemoryUi.getState().tick).toBe(tick0);
     await act(async () => void vi.advanceTimersByTime(200));
-    expect(m.memoryStatus).toHaveBeenCalledTimes(2);
+    expect(useMemoryUi.getState().tick).toBe(tick0 + 1);
+    expect(m.memoryStatus.mock.calls.length).toBeGreaterThan(calls0);
     await act(async () => void vi.advanceTimersByTime(22_000));
-    expect(m.memoryStatus).toHaveBeenCalledTimes(3);
+    expect(useMemoryUi.getState().tick).toBe(tick0 + 2);
   });
 });
 
@@ -296,7 +342,10 @@ describe("context meter", () => {
   });
   it("rounds to k and shows a dash for null", () => {
     expect(formatTokens(182_400)).toBe("182k");
-    expect(formatTokens(182_600)).toBe("183k");
+    expect(formatTokens(182_600)).toBe("182k");
+    expect(formatTokens(99_999)).toBe("99k");
+    expect(formatTokens(200_001)).toBe("200k");
+    expect(formatTokens(1_500_000)).toBe("1.5M");
     expect(formatTokens(null)).toBe("—");
   });
   it("normal: no hint, no shortcut", () => {
@@ -305,9 +354,9 @@ describe("context meter", () => {
     expect(screen.queryByText(/Conversación larga/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
-  it("null: dash, no hint", () => {
-    render(<ContextMeter tokens={null} blocker={null} />);
-    expect(screen.getByText(/Contexto —/)).toBeInTheDocument();
+  it.each([[null], [0]])("renders nothing for %s tokens", (t) => {
+    const { container } = render(<ContextMeter tokens={t} blocker={null} />);
+    expect(container).toBeEmptyDOMElement();
   });
   it.each([[150_000, "warning", "largo"], [250_000, "high", "muy largo"]])("%i shows hint, text marker and shortcut", (t, level, word) => {
     const { container } = render(<ContextMeter tokens={t} blocker={null} />);

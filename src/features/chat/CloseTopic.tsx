@@ -72,6 +72,9 @@ interface DialogProps {
 
 export function CloseTopicDialog({ space, sessionId, running, onNewConversation }: DialogProps) {
   const [phase, setPhase] = useState<Phase>({ kind: "saving" });
+  const [discarding, setDiscarding] = useState(false);
+  const discardingRef = useRef(false);
+  discardingRef.current = discarding;
   const mounted = useRef(true);
   const started = useRef(false);
   const box = useRef<HTMLDivElement>(null);
@@ -81,7 +84,10 @@ export function CloseTopicDialog({ space, sessionId, running, onNewConversation 
   const run = useCallback(async () => {
     const ui = useMemoryUi.getState();
     ui.setClosing(true);
-    if (mounted.current) setPhase({ kind: "saving" });
+    if (mounted.current) {
+      setDiscarding(false);
+      setPhase({ kind: "saving" });
+    }
     let next: Phase;
     try {
       const result = await api.memoryCloseTopic(space, sessionId);
@@ -104,14 +110,18 @@ export function CloseTopicDialog({ space, sessionId, running, onNewConversation 
     }
     return () => {
       mounted.current = false;
-      document.getElementById(TRIGGER_ID)?.focus();
+      const trigger = document.getElementById(TRIGGER_ID) as HTMLButtonElement | null;
+      const target = trigger && !trigger.disabled ? trigger : document.querySelector<HTMLElement>(".chat .composer textarea");
+      target?.focus();
     };
   }, [run]);
 
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
       // A memory panel opened on top handles its own Esc.
-      if (e.key === "Escape" && !useMemoryUi.getState().panelOpen) dismiss();
+      if (e.key !== "Escape" || useMemoryUi.getState().panelOpen) return;
+      if (discardingRef.current) setDiscarding(false);
+      else dismiss();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -165,9 +175,6 @@ export function CloseTopicDialog({ space, sessionId, running, onNewConversation 
         {phase.kind === "failed" && (
           <div className="topic-error" role="alert">
             <p>{phase.message}</p>
-            <button className="btn" onClick={() => void run()}>
-              Reintentar
-            </button>
           </div>
         )}
         {upToDate && (
@@ -183,11 +190,36 @@ export function CloseTopicDialog({ space, sessionId, running, onNewConversation 
             ))}
           </ul>
         )}
+        {discarding && (
+          <p className="memory-muted" role="status">
+            El cronista no pudo guardar el tema; lo que se habló solo está en esta conversación.
+          </p>
+        )}
         <div className="dialog-actions topic-actions">
           {saving ? (
             <button className="btn" onClick={dismiss}>
               Cancelar
             </button>
+          ) : phase.kind === "failed" ? (
+            <>
+              <button className="btn topic-full" onClick={() => {
+                  if (!discarding) return setDiscarding(true);
+                  dismiss();
+                  onNewConversation();
+                }}
+              >
+                {discarding ? "Confirmar: se perderá esta conversación" : "Abrir nueva sin guardar"}
+              </button>
+              <button
+                className="btn"
+                onClick={() => (discarding ? setDiscarding(false) : dismiss())}
+              >
+                Mantener esta conversación
+              </button>
+              <button ref={primary} className="btn btn-primary" onClick={() => void run()}>
+                Reintentar
+              </button>
+            </>
           ) : (
             <>
               <button className="btn topic-full" onClick={() => useMemoryUi.getState().openPanel()}>

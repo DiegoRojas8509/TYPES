@@ -8,6 +8,7 @@ import { startChatEvents, useChats } from "./conversations";
 import { Markdown } from "./Markdown";
 import { MemoryBadge } from "./MemoryBadge";
 import { MemoryPanel } from "./MemoryPanel";
+import { useMemoryRefresh } from "./MemoryRefresher";
 import { closeTopicBlocker, useMemoryUi } from "./memoryUi";
 import { RemoteButton } from "./RemoteButton";
 import { type ChatItem, initialChat, MSG_NOT_FOUND, selectContextTokens } from "./reducer";
@@ -108,6 +109,7 @@ function SpaceChat({ space }: { space: string }) {
   const closeOpen = useMemoryUi((s) => s.closeOpen);
   const panelOpen = useMemoryUi((s) => s.panelOpen);
   const closing = useMemoryUi((s) => s.closing);
+  useMemoryRefresh(space);
 
   useLayoutEffect(() => {
     useChats.getState().ensure(space);
