@@ -56,7 +56,20 @@ export interface ChatState {
   blocks: Record<number, Block>;
   /** Last stderr lines of the run (only surfaced when it exits with an error). */
   stderr: string[];
+  /** Context in use: input + cache read + cache creation tokens of the LAST assistant message (null = unknown). */
+  contextTokens: number | null;
 }
+
+/** Tokens the model had in context for one assistant message, or null when the usage is missing. */
+export function contextOf(usage: unknown): number | null {
+  if (!isObj(usage)) return null;
+  const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : 0);
+  const total = n(usage.input_tokens) + n(usage.cache_read_input_tokens) + n(usage.cache_creation_input_tokens);
+  return total > 0 ? total : null;
+}
+
+/** Selector: context tokens in use by this conversation. */
+export const selectContextTokens = (s: ChatState): number | null => s.contextTokens;
 
 export type ChatAction =
   | ClaudeEvent
@@ -83,6 +96,7 @@ export function initialChat(): ChatState {
     msgId: null,
     blocks: {},
     stderr: [],
+    contextTokens: null,
   };
 }
 
@@ -209,6 +223,8 @@ function assistantLine(s: ChatState, line: Record<string, any>): ChatState {
   const msgId = typeof msg.id === "string" ? msg.id : undefined;
   const fromSubagent = line.parent_tool_use_id != null;
   let next = s;
+  const used = fromSubagent ? null : contextOf(msg.usage);
+  if (used !== null) next = { ...next, contextTokens: used };
   let textOrdinal = 0;
   for (const block of msg.content) {
     if (!isObj(block)) continue;

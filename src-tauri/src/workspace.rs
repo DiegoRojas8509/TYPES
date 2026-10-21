@@ -113,7 +113,7 @@ fn resolve_entry(root: &Path, rel: &str) -> Result<PathBuf> {
     }
 }
 
-fn resolve_dir(root: &Path, rel: &str) -> Result<PathBuf> {
+pub(crate) fn resolve_dir(root: &Path, rel: &str) -> Result<PathBuf> {
     let p = resolve(root, rel)?;
     if p.is_dir() {
         Ok(p)

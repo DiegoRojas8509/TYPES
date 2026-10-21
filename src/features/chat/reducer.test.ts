@@ -10,6 +10,8 @@ import {
   MSG_RESUME,
   MSG_STOPPED,
   reducer,
+  contextOf,
+  selectContextTokens,
 } from "./reducer";
 
 const ROOT = "/private/tmp/claude-501/-Users-user-Documents-TYPES/636cb978-c758-41da-a70b-9df1023f4b5d/scratchpad";
@@ -185,5 +187,39 @@ describe("reducer", () => {
     const s = reducer(reducer(initialChat(), { kind: "begin" }), { kind: "failed", message: "No encontré Claude Code." });
     expect(s.running).toBe(false);
     expect(of(s, "error")).toMatchObject([{ text: "No encontré Claude Code." }]);
+  });
+
+  describe("context usage", () => {
+    it("contextOf sums input + cache read + cache creation and ignores junk", () => {
+      expect(contextOf({ input_tokens: 2, cache_read_input_tokens: 10, cache_creation_input_tokens: 5, output_tokens: 99 })).toBe(17);
+      expect(contextOf({ input_tokens: "x" })).toBeNull();
+      expect(contextOf(undefined)).toBeNull();
+    });
+
+    it("context_tokens_is_the_last_assistant_message_not_the_sum", () => {
+      const usages = tools.filter((l) => l.type === "assistant" && l.message?.usage).map((l) => l.message.usage);
+      expect(usages.length).toBeGreaterThan(1);
+      const last = usages[usages.length - 1];
+      const expected = last.input_tokens + last.cache_read_input_tokens + last.cache_creation_input_tokens;
+      const s = feed(started(), tools);
+      expect(selectContextTokens(s)).toBe(expected);
+      expect(expected).toBe(2 + 42980 + 177);
+    });
+
+    it("ignores subagent messages and starts unknown", () => {
+      expect(selectContextTokens(initialChat())).toBeNull();
+      const s = feed(started(), [
+        { type: "assistant", parent_tool_use_id: "t1", message: { id: "m", content: [], usage: { input_tokens: 999 } } },
+      ]);
+      expect(selectContextTokens(s)).toBeNull();
+    });
+
+    it("keeps the value across runs and clears on reset", () => {
+      let s = feed(started(), tools);
+      s = reducer(s, { kind: "exit", runId: 1, code: 0 });
+      s = reducer(s, { kind: "begin" });
+      expect(selectContextTokens(s)).not.toBeNull();
+      expect(selectContextTokens(reducer(s, { kind: "reset" }))).toBeNull();
+    });
   });
 });

@@ -1,6 +1,8 @@
 mod activity;
 mod claude;
 mod error;
+mod memory;
+mod memory_close;
 mod preview;
 mod remote;
 mod settings;
@@ -40,6 +42,7 @@ pub fn run() {
             app.manage(watcher::WatcherSlot::default());
             app.manage(claude::ClaudeState::default());
             app.manage(remote::RemoteState::default());
+            app.manage(memory_close::CloseState::default());
             watcher::restart(app.handle());
             Ok(())
         })
@@ -54,6 +57,9 @@ pub fn run() {
             remote::remote_start,
             remote::remote_stop,
             remote::remote_trust,
+            memory::memory_status,
+            memory::memory_read,
+            memory_close::memory_close_topic,
             activity::activity,
             preview::board_preview,
             workspace::list_tree,

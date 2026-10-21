@@ -56,6 +56,44 @@ export interface ClaudeStatus {
   version: string | null;
 }
 
+/** Mirrors `MemoryEntry` in memory.rs. `updated` is the file mtime in ms. */
+export interface MemoryEntry {
+  file: string;
+  title: string;
+  description: string;
+  updated: number | null;
+}
+
+/** Mirrors `MemoryStatus` in memory.rs: Claude's native memory for one space. */
+export interface MemoryStatus {
+  dir: string;
+  exists: boolean;
+  entries: MemoryEntry[];
+  facts: number;
+  decisions: number;
+  /** Newest mtime (ms) among the entries, or null when there are none. */
+  updated: number | null;
+  indexLines: number;
+}
+
+/** Mirrors `MemoryChange` in memory_close.rs: real line diff of one memory file. */
+export interface MemoryChange {
+  file: string;
+  action: "nuevo" | "actualizado" | "sin-cambios" | string;
+  summary: string;
+  added: string[];
+  removed: string[];
+}
+
+/** Mirrors `CloseTopicResult` in memory_close.rs. */
+export interface CloseTopicResult {
+  ok: boolean;
+  changes: MemoryChange[];
+  error: string | null;
+  /** The conversation has no transcript yet: there was nothing to save. */
+  nothingToSave: boolean;
+}
+
 /** What every rejected command carries. `message` is Spanish, ready to show. */
 export interface ApiError {
   kind: string;
@@ -141,6 +179,13 @@ export const api = {
     board: string | null,
   ) => invoke<number>("claude_send", { space, text, attachments, sessionId, model: model || null, board }),
   claudeStop: (runId: number) => invoke<void>("claude_stop", { runId }),
+
+  memoryStatus: (space: string) => invoke<MemoryStatus>("memory_status", { space }),
+  /** `file` is a plain name: `MEMORY.md` or `cronista-*.md`. */
+  memoryRead: (space: string, file: string) => invoke<string>("memory_read", { space, file }),
+  /** Runs the cronista on the conversation now (can take a minute); one at a time. */
+  memoryCloseTopic: (space: string, sessionId: string) =>
+    invoke<CloseTopicResult>("memory_close_topic", { space, sessionId }),
 
   remoteStatus: () => invoke<RemoteStatus>("remote_status"),
   remoteStart: () => invoke<RemoteStatus>("remote_start"),
