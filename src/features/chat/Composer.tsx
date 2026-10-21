@@ -1,4 +1,4 @@
-import { useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from "react";
+import { useRef, useState, type ReactNode, type ClipboardEvent, type DragEvent, type KeyboardEvent } from "react";
 import { getModel, MODELS, setModel } from "../../lib/model";
 import type { PendingImage } from "./conversations";
 
@@ -10,6 +10,8 @@ interface Chip extends PendingImage {
 
 interface Props {
   running: boolean;
+  /** Slot above the box (context meter). */
+  meter?: ReactNode;
   onSend(text: string, images: PendingImage[]): Promise<boolean>;
   onStop(): void;
 }
@@ -23,7 +25,7 @@ function nameFor(file: File): string {
 }
 
 /** Message box with image chips. The parent keys it by space, so each space keeps its own draft. */
-export function Composer({ running, onSend, onStop }: Props) {
+export function Composer({ running, meter, onSend, onStop }: Props) {
   const [text, setText] = useState("");
   const [chips, setChips] = useState<Chip[]>([]);
   const [problem, setProblem] = useState<string | null>(null);
@@ -94,6 +96,7 @@ export function Composer({ running, onSend, onStop }: Props) {
       }}
       onDrop={onDrop}
     >
+      {meter}
       {chips.length > 0 && (
         <ul className="composer-chips" aria-label="Imágenes adjuntas">
           {chips.map((c) => (

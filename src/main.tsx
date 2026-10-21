@@ -8,6 +8,7 @@ import "./styles/sidebar.css";
 import "./styles/editor.css";
 import "./styles/viewer.css";
 import "./styles/chat.css";
+import "./styles/memory.css";
 import "./features/home/home.css";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(

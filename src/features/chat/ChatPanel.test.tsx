@@ -11,6 +11,7 @@ vi.mock("../../lib/api", async (importActual) => ({
     claudeSend: vi.fn(),
     claudeStop: vi.fn(),
     saveAttachment: vi.fn(),
+    memoryStatus: vi.fn(),
   },
   onClaudeEvent: vi.fn(async (cb: (e: ClaudeEvent) => void) => {
     listener = cb;
@@ -66,6 +67,7 @@ beforeEach(() => {
   mocked.claudeStatus.mockResolvedValue({ found: true, path: "/bin/claude", version: "2.1.296" });
   mocked.claudeSend.mockResolvedValue(1);
   mocked.claudeStop.mockResolvedValue();
+  mocked.memoryStatus.mockResolvedValue({ dir: "/m", exists: false, entries: [], facts: 0, decisions: 0, updated: null, indexLines: 0 });
   mocked.saveAttachment.mockImplementation(async (space, name) => `${space}/adjuntos/${name}`);
 });
 

@@ -1,11 +1,16 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { baseName } from "../../lib/paths";
 import { useApp } from "../../store/app";
+import { CloseTopicButton, CloseTopicDialog } from "./CloseTopic";
 import { Composer } from "./Composer";
+import { ContextMeter } from "./ContextMeter";
 import { startChatEvents, useChats } from "./conversations";
 import { Markdown } from "./Markdown";
+import { MemoryBadge } from "./MemoryBadge";
+import { MemoryPanel } from "./MemoryPanel";
+import { closeTopicBlocker, useMemoryUi } from "./memoryUi";
 import { RemoteButton } from "./RemoteButton";
-import { type ChatItem, initialChat, MSG_NOT_FOUND } from "./reducer";
+import { type ChatItem, initialChat, MSG_NOT_FOUND, selectContextTokens } from "./reducer";
 
 const EMPTY = initialChat();
 const STEP_MARK: Record<string, string> = { done: "✓", error: "no se pudo", stopped: "interrumpido" };
@@ -100,10 +105,15 @@ function SpaceChat({ space }: { space: string }) {
   const stuck = useRef(true);
   // Clearing a conversation cannot be undone, so it takes a second, explicit click.
   const [confirming, setConfirming] = useState(false);
+  const closeOpen = useMemoryUi((s) => s.closeOpen);
+  const panelOpen = useMemoryUi((s) => s.panelOpen);
+  const closing = useMemoryUi((s) => s.closing);
 
   useLayoutEffect(() => {
     useChats.getState().ensure(space);
     setConfirming(false);
+    useMemoryUi.getState().dismissClose();
+    useMemoryUi.getState().closePanel();
   }, [space]);
 
   useEffect(() => {
@@ -150,16 +160,20 @@ function SpaceChat({ space }: { space: string }) {
             </button>
           </>
         ) : (
-          <button
-            className="btn"
-            disabled={conv.running || (!conv.items.length && !conv.sessionId)}
-            onClick={() => setConfirming(true)}
-          >
-            Nueva conversación
-          </button>
+          <>
+            <CloseTopicButton conv={conv} />
+            <button
+              className="btn"
+              disabled={conv.running || (!conv.items.length && !conv.sessionId)}
+              onClick={() => setConfirming(true)}
+            >
+              Nueva conversación
+            </button>
+          </>
         )}
       </div>
       <div className="chat-scroll" ref={scroller} onScroll={onScroll} role="log" aria-live="polite">
+        {!conv.items.length && !conv.running && <MemoryBadge space={space} />}
         {!conv.items.length && !conv.running && (
           <p className="chat-hint">
             Pídele a Claude que analice, costee o genere un reporte con los archivos de <strong>{space}</strong>. Verás
@@ -176,7 +190,17 @@ function SpaceChat({ space }: { space: string }) {
           {MSG_NOT_FOUND}
         </p>
       )}
+      {closeOpen && conv.sessionId && (
+        <CloseTopicDialog
+          space={space}
+          sessionId={conv.sessionId}
+          running={conv.running}
+          onNewConversation={() => useChats.getState().reset(space)}
+        />
+      )}
+      {panelOpen && <MemoryPanel space={space} />}
       <Composer
+        meter={<ContextMeter tokens={selectContextTokens(conv)} blocker={closeTopicBlocker(conv, closing)} />}
         running={conv.running}
         onSend={(text, images) => useChats.getState().send(space, text, images)}
         onStop={() => useChats.getState().stop(space)}
