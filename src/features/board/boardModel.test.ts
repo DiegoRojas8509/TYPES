@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { NodeChange } from "@xyflow/react";
-import type { CanvasNode } from "../../lib/canvas";
+import { archiveNode, parseCanvas, serializeCanvas, type CanvasNode } from "../../lib/canvas";
 import {
   FALLBACK_TYPE,
   fromFlow,
@@ -91,5 +91,37 @@ describe("boardModel", () => {
     expect(isUserEdit(c({ id: "a", type: "dimensions", resizing: false }))).toBe(true);
     expect(isUserEdit(c({ id: "a", type: "select", selected: true }))).toBe(false);
     expect(isUserEdit(c({ id: "a", type: "remove" }))).toBe(true);
+  });
+});
+
+describe("archived nodes in the flow", () => {
+  const archived = archiveNode(node, "viejo", "tu", new Date(2026, 9, 21));
+  it("hides only a validly archived node", () => {
+    expect(toFlowNode(archived, all).hidden).toBe(true);
+    expect(toFlowNode(node, all).hidden).toBeUndefined();
+    expect(toFlowNode({ ...node, archived: { at: "ayer", reason: "x" } }, all).hidden).toBeUndefined();
+    expect(toFlowNode({ ...node, archived: "x" }, all).hidden).toBeUndefined();
+  });
+  it("patchFlowNode keeps the hidden state in sync", () => {
+    const f = toFlowNode(archived, all);
+    expect(patchFlowNode(f, { text: "x" }, all).hidden).toBe(true);
+    expect(patchFlowNode(f, { archived: undefined }, all).hidden).toBeUndefined();
+  });
+  it("edges touching an archived node are not shown but are saved", () => {
+    const b: CanvasNode = { ...node, id: "b" };
+    const nodes = [toFlowNode(archived, all), toFlowNode(b, all)];
+    const edges = [toFlowEdge({ id: "e", fromNode: "a", toNode: "b" }), toFlowEdge({ id: "f", fromNode: "b", toNode: "b" })];
+    expect(visibleEdges(nodes, edges).map((e) => e.id)).toEqual(["f"]);
+    expect(fromFlow(nodes, edges).edges.map((e) => e.id)).toEqual(["e", "f"]);
+  });
+  it("the saved JSON has the whole node plus archived and never `hidden`", () => {
+    const text = serializeCanvas(fromFlow([toFlowNode(archived, all)], []));
+    expect(text).not.toContain("hidden");
+    const parsed = parseCanvas(text);
+    expect(parsed.ok && parsed.doc.nodes[0]).toEqual(archived);
+  });
+  it("fromFlowNode ignores hidden set on the flow node", () => {
+    const f = { ...toFlowNode(node, all), hidden: true };
+    expect(fromFlow([f], []).nodes[0]).toEqual(node);
   });
 });

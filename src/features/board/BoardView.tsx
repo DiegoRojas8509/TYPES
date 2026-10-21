@@ -20,6 +20,9 @@ import { useDocument, type DocStatus } from "../../lib/useDocument";
 import { defaultNode, type BlockKind } from "./addMenu";
 import { BlockMenu } from "./BlockMenu";
 import { OrderButton } from "./OrderButton";
+import { CleanButton } from "./CleanButton";
+import { HistoryPanel } from "./HistoryPanel";
+import { historyActions } from "./historyActions";
 import { BoardActionsContext, BoardContext, type BoardActions } from "./boardActions";
 import {
   fromFlow,
@@ -186,6 +189,7 @@ function Board({ path }: { path: string }) {
         apply(next, edgesRef.current);
         persist(next, edgesRef.current);
       },
+      ...historyActions({ nodesRef, edgesRef, editableRef, apply, persist, isKnown }),
     }),
     [apply, persist],
   );
@@ -234,6 +238,7 @@ function Board({ path }: { path: string }) {
   const { onDragOver, onDrop } = useBoardImages({ path, editableRef, addNodes, viewportCentre });
 
   const shown = useMemo(() => visibleEdges(nodes, edges), [nodes, edges]);
+  const canvasNodes = useMemo(() => nodes.map((n) => n.data), [nodes]);
   const fileNodes = useMemo(() => nodes.map((n) => ({ type: n.type, file: n.data.file })), [nodes]);
 
   return (
@@ -246,6 +251,8 @@ function Board({ path }: { path: string }) {
             </span>
           )}
           <OrderButton path={path} editable={editable} />
+          <CleanButton path={path} editable={editable} />
+          <HistoryPanel path={path} nodes={canvasNodes} editable={editable} onRestore={actions.restore} host={flowEl} />
           <ImagePanel path={path} editable={editable} nodes={fileNodes} host={flowEl} />
           {editable && (
             <button

@@ -34,7 +34,7 @@ function board(node: CanvasNode, selected = false, types: NodeTypes = flowNodeTy
   const flowNode: FlowNode = { ...toFlowNode(node, (t) => Object.prototype.hasOwnProperty.call(types, t)), selected };
   return (
     <BoardContext.Provider value={{ boardPath: BOARD }}>
-      <BoardActionsContext.Provider value={{ update }}>
+      <BoardActionsContext.Provider value={{ update, archive: vi.fn(), restore: vi.fn() }}>
         <ReactFlowProvider>
           <div style={{ width: 800, height: 600 }}>
             <ReactFlow nodes={[flowNode]} edges={[]} nodeTypes={types} />
@@ -350,13 +350,13 @@ describe("GroupNode", () => {
 });
 
 describe("UnknownNode", () => {
-  it("shows the type and the preserved-as-is note, and offers no edit controls", () => {
+  it("shows the type and the preserved-as-is note, and offers no edit controls (only «Archivar», which adds a field and changes nothing else)", () => {
     const node = make({ type: "raro", foo: 1 });
     expect(isKnown("raro")).toBe(false);
     const { container, getByText } = render(board(node));
     expect(getByText("raro")).toBeInTheDocument();
     expect(container.textContent).toContain("Bloque de tipo «raro» no soportado: se conserva sin cambios");
-    expect(container.querySelector("input, textarea, button, [contenteditable=true]")).toBeNull();
+    expect(container.querySelector("input, textarea, button:not(.block-archive), [contenteditable=true]")).toBeNull();
   });
 
   it("a node with an empty type still gets a non-empty title and note", () => {

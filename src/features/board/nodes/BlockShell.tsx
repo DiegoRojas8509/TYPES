@@ -22,6 +22,7 @@
 // Styling lives in nodes.css under `.block*`. New block types only add a body.
 import { Handle, NodeResizer, Position } from "@xyflow/react";
 import type { CSSProperties, ReactNode } from "react";
+import { ArchiveControl } from "./ArchiveControl";
 
 const PRESET = /^[1-6]$/;
 const HEX = /^#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
@@ -103,6 +104,7 @@ export function BlockShell({
           {titleSlot ?? title}
         </span>
         {actions}
+        <ArchiveControl id={id} title={title} />
       </header>
       <div className="block-body">{children}</div>
     </div>

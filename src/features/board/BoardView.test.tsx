@@ -413,3 +413,95 @@ describe("Ordenar con Claude", () => {
     expect(api.writeText).not.toHaveBeenCalled();
   });
 });
+
+describe("history layer in the mounted board", () => {
+  const SAMPLE = {
+    nodes: [
+      { id: "a", type: "text", x: 0, y: 0, width: 200, height: 100, text: "# Uno", extra: { k: [1] } },
+      { id: "b", type: "text", x: 300, y: 0, width: 200, height: 100, text: "# Dos" },
+    ],
+    edges: [{ id: "e", fromNode: "a", toNode: "b", label: "x" }],
+  };
+  const withArchived = JSON.stringify({
+    ...SAMPLE,
+    nodes: [{ ...SAMPLE.nodes[0], archived: { at: "2026-10-01", reason: "viejo", by: "claude" } }, SAMPLE.nodes[1]],
+  });
+  const lastWrite = () => {
+    const calls = vi.mocked(api.writeText).mock.calls;
+    const parsed = parseCanvas(calls[calls.length - 1][1]);
+    if (!parsed.ok) throw new Error("bad write");
+    return { text: calls[calls.length - 1][1], doc: parsed.doc };
+  };
+
+  it("opening a board with archived blocks hides them, shows «Historial (1)» and never writes", async () => {
+    const { container, unmount } = await open(withArchived);
+    expect(screen.getByRole("button", { name: /^Historial/ })).toHaveTextContent("Historial (1)");
+    expect(container.querySelectorAll(".react-flow__node:not([style*='hidden'])").length).toBeLessThanOrEqual(2);
+    await wait(AUTOSAVE_MS * 5);
+    unmount();
+    expect(api.writeText).not.toHaveBeenCalled();
+  });
+
+  it("opening the panel and clicking around does not write", async () => {
+    const { unmount } = await open(withArchived);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /^Historial/ }));
+    });
+    await wait(AUTOSAVE_MS * 5);
+    unmount();
+    expect(api.writeText).not.toHaveBeenCalled();
+  });
+
+  it("restoring from the panel saves the node back without `archived` and with everything else intact", async () => {
+    const { unmount } = await open(withArchived);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /^Historial/ }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Restaurar/ }));
+    });
+    await wait(AUTOSAVE_MS * 2);
+    const { doc, text } = lastWrite();
+    expect(doc.nodes[0]).toEqual(SAMPLE.nodes[0]);
+    expect(doc.edges).toEqual(SAMPLE.edges);
+    expect(text).not.toContain("hidden");
+    unmount();
+  });
+
+  it("archiving from a block saves the whole node plus archived (by tu), keeps the edge, and no `hidden`", async () => {
+    const { unmount } = await open(JSON.stringify(SAMPLE));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Archivar «Uno»" }));
+    });
+    const input = screen.getByPlaceholderText("¿Por qué se archiva? (opcional)");
+    fireEvent.change(input, { target: { value: "reemplazado" } });
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+    });
+    await wait(AUTOSAVE_MS * 2);
+    const { doc, text } = lastWrite();
+    const { archived, ...rest } = doc.nodes[0] as Record<string, unknown>;
+    expect(rest).toEqual(SAMPLE.nodes[0]);
+    expect(archived).toMatchObject({ reason: "reemplazado", by: "tu" });
+    expect((archived as { at: string }).at).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(doc.nodes[1]).toEqual(SAMPLE.nodes[1]);
+    expect(doc.edges).toEqual(SAMPLE.edges);
+    expect(text).not.toContain("hidden");
+    expect(screen.getByRole("button", { name: /^Historial/ })).toHaveTextContent("Historial (1)");
+    unmount();
+  });
+
+  it("a malformed `archived` leaves the block on screen and out of the history", async () => {
+    const bad = JSON.stringify({ ...SAMPLE, nodes: [{ ...SAMPLE.nodes[0], archived: { at: "ayer", reason: "x" } }, SAMPLE.nodes[1]] });
+    const { unmount } = await open(bad);
+    expect(screen.queryByRole("button", { name: /^Historial/ })).toBeNull();
+    expect(screen.getByRole("button", { name: "Archivar «Uno»" })).toBeInTheDocument();
+    unmount();
+  });
+
+  it("«Limpiar con Claude» sits in the toolbar and is disabled on an unreadable board", async () => {
+    const { unmount } = await open("{");
+    expect(screen.getByRole("button", { name: "Limpiar con Claude" })).toBeDisabled();
+    unmount();
+  });
+});

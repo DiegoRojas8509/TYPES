@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mergeCanvasText, newId, parseCanvas, serializeCanvas, type CanvasDoc } from "./canvas";
+import { archiveNode, archivedOf, mergeCanvasText, newId, parseCanvas, restoreNode, serializeCanvas, type CanvasDoc } from "./canvas";
 
 const node = (id: string, extra: Record<string, unknown> = {}) => ({
   id,
@@ -241,5 +241,62 @@ describe("mergeCanvasText", () => {
     expect(mergeCanvasText("{", base, base)).toEqual({ ok: false });
     expect(mergeCanvasText(base, "", base)).toEqual({ ok: false });
     expect(mergeCanvasText(base, base, "nope")).toEqual({ ok: false });
+  });
+});
+
+describe("archived", () => {
+  const n = (archived: unknown) => node("a", { archived });
+  it("reads a valid archived field", () => {
+    expect(archivedOf(n({ at: "2026-10-21", reason: "viejo", by: "claude" }))).toEqual({ at: "2026-10-21", reason: "viejo", by: "claude" });
+    expect(archivedOf(n({ at: "2026-10-21", reason: "" }))).toEqual({ at: "2026-10-21", reason: "" });
+  });
+  it.each([
+    ["missing", undefined],
+    ["malformed at", { at: "21/10/2026", reason: "x" }],
+    ["at with extra text", { at: "2026-10-21T10:00", reason: "x" }],
+    ["reason not a string", { at: "2026-10-21", reason: 3 }],
+    ["not an object", "2026-10-21"],
+    ["array", []],
+    ["null", null],
+  ])("is null when %s", (_n, v) => {
+    expect(archivedOf(n(v))).toBeNull();
+  });
+  it("drops an unknown `by` but keeps the entry", () => {
+    expect(archivedOf(n({ at: "2026-10-21", reason: "x", by: "robot" }))).toEqual({ at: "2026-10-21", reason: "x" });
+  });
+  const rich = node("a", { text: "hola", color: "3", extra: { k: [1, { z: null }] }, "weird-key": 7 });
+  it("archiveNode adds the field with the local date and keeps every other field", () => {
+    const out = archiveNode(rich, "reemplazado", "tu", new Date(2026, 9, 5, 23, 59));
+    expect(out).toEqual({ ...rich, archived: { at: "2026-10-05", reason: "reemplazado", by: "tu" } });
+    expect(rich).not.toHaveProperty("archived");
+  });
+  it("restoreNode removes only archived", () => {
+    const out = restoreNode(archiveNode(rich, "x", "claude", new Date(2026, 0, 2)));
+    expect(out).toEqual(rich);
+    expect(out).not.toHaveProperty("archived");
+  });
+  it("restoreNode also clears a malformed archived field", () => {
+    expect(restoreNode(n("junk"))).not.toHaveProperty("archived");
+  });
+  it("archive and restore on one block while another changes on disk lose neither", () => {
+    const a = node("a", { text: "A" });
+    const b = node("b", { text: "B" });
+    const base = serializeCanvas({ nodes: [a, b], edges: [] });
+    const mine = serializeCanvas({ nodes: [archiveNode(a, "x", "tu", new Date(2026, 9, 21)), b], edges: [] });
+    const theirs = serializeCanvas({ nodes: [a, { ...b, text: "B2" }], edges: [] });
+    const merged = mergeCanvasText(base, mine, theirs);
+    expect(merged.ok).toBe(true);
+    if (!merged.ok) return;
+    const doc = parseCanvas(merged.text);
+    if (!doc.ok) throw new Error("bad");
+    expect(doc.doc.nodes[0]).toMatchObject({ id: "a", text: "A", archived: { at: "2026-10-21" } });
+    expect(doc.doc.nodes[1]).toMatchObject({ id: "b", text: "B2" });
+  });
+  it("both sides touching the same block is a conflict", () => {
+    const a = node("a", { text: "A" });
+    const base = serializeCanvas({ nodes: [a], edges: [] });
+    const mine = serializeCanvas({ nodes: [archiveNode(a, "x", "tu", new Date(2026, 9, 21))], edges: [] });
+    const theirs = serializeCanvas({ nodes: [{ ...a, text: "A2" }], edges: [] });
+    expect(mergeCanvasText(base, mine, theirs)).toEqual({ ok: false });
   });
 });

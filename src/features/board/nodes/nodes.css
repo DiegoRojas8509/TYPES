@@ -269,3 +269,40 @@
   color: var(--text-muted);
   font-size: var(--text-sm);
 }
+
+/* Archive control: appears on hover or keyboard focus of the block. */
+.block-archive {
+  display: grid;
+  flex: none;
+  place-content: center;
+  width: var(--icon-btn);
+  height: var(--icon-btn);
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  opacity: 0;
+}
+.block:hover .block-archive,
+.block:focus-within .block-archive,
+.block-archive:focus-visible {
+  opacity: 1;
+}
+.block-archive:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.block-archive-reason {
+  flex: 0 1 200px;
+  min-width: 0;
+  margin-left: auto;
+  height: var(--row-h);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+  color: var(--text);
+  font-size: var(--text-sm);
+}

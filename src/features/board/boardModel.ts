@@ -3,7 +3,7 @@
 // know (added by Claude or other tools) survive any edit untouched. Only
 // position and size are read back from React Flow's own state.
 import type { Edge, Node, NodeChange } from "@xyflow/react";
-import type { CanvasDoc, CanvasEdge, CanvasNode } from "../../lib/canvas";
+import { archivedOf, type CanvasDoc, type CanvasEdge, type CanvasNode } from "../../lib/canvas";
 
 export type FlowNode = Node<CanvasNode>;
 export type FlowEdge = Edge<CanvasEdge>;
@@ -23,6 +23,8 @@ export function toFlowNode(n: CanvasNode, isKnown: (type: string) => boolean): F
     // A zone is big and mostly empty: only its label bar drags it, so dragging
     // inside it pans the board like any empty area.
     ...(n.type === "group" ? { dragHandle: ".zone-head" } : {}),
+    // Display only: the state keeps every node, `fromFlowNode` never writes `hidden`.
+    ...(archivedOf(n) ? { hidden: true } : {}),
     data: n,
   };
 }
@@ -52,9 +54,9 @@ export function fromFlow(nodes: FlowNode[], edges: FlowEdge[]): CanvasDoc {
   return { nodes: nodes.map(fromFlowNode), edges: edges.map(fromFlowEdge) };
 }
 
-/** Edges whose endpoints exist. Dangling ones stay in the file, just not on screen. */
+/** Edges whose endpoints exist and are not archived. The rest stay in the file, just not on screen. */
 export function visibleEdges(nodes: FlowNode[], edges: FlowEdge[]): FlowEdge[] {
-  const ids = new Set(nodes.map((n) => n.id));
+  const ids = new Set(nodes.filter((n) => !n.hidden).map((n) => n.id));
   return edges.filter((e) => ids.has(e.source) && ids.has(e.target));
 }
 

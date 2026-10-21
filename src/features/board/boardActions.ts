@@ -4,9 +4,15 @@ import type { CanvasNode } from "../../lib/canvas";
 export interface BoardActions {
   /** Merges `patch` into the node with that id and persists the board. */
   update(id: string, patch: Partial<CanvasNode>): void;
+  /** Moves the node to the history layer (`archived`, by "tu"); empty reason becomes «archivado a mano». */
+  archive(id: string, reason?: string): void;
+  /** Brings an archived node back to the board. */
+  restore(id: string): void;
+  /** True when the board cannot be edited: blocks hide their write controls. */
+  readOnly?: boolean;
 }
 
-export const BoardActionsContext = createContext<BoardActions>({ update() {} });
+export const BoardActionsContext = createContext<BoardActions>({ update() {}, archive() {}, restore() {} });
 
 /** Block components import this (never BoardView) to edit their own node. */
 export function useBoardActions(): BoardActions {

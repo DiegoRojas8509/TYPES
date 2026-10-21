@@ -42,6 +42,36 @@ export function newId(): string {
   return Array.from(bytes, (b) => ID_CHARS[b % ID_CHARS.length]).join("");
 }
 
+/** History layer: an archived node stays in the file, just hidden from the board. */
+export type Archived = { at: string; reason: string; by?: "claude" | "tu" };
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** The node's `archived` entry, or null when absent or malformed (a malformed one leaves the node visible). */
+export function archivedOf(node: CanvasNode): Archived | null {
+  const a = node.archived;
+  if (!isRecord(a)) return null;
+  if (typeof a.at !== "string" || !DATE_RE.test(a.at) || typeof a.reason !== "string") return null;
+  return a.by === "claude" || a.by === "tu" ? { at: a.at, reason: a.reason, by: a.by } : { at: a.at, reason: a.reason };
+}
+
+/** Local date as YYYY-MM-DD. */
+function localDate(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+/** Adds `archived` and touches nothing else. */
+export function archiveNode(node: CanvasNode, reason: string, by: "claude" | "tu", now: Date = new Date()): CanvasNode {
+  return { ...node, archived: { at: localDate(now), reason, by } };
+}
+
+/** Removes only `archived`. */
+export function restoreNode(node: CanvasNode): CanvasNode {
+  const { archived: _archived, ...rest } = node;
+  return rest as CanvasNode;
+}
+
 /** Own-property check (tsconfig lib predates Object.hasOwn). */
 function hasOwn(obj: object, key: string): boolean {
   return Object.prototype.hasOwnProperty.call(obj, key);
