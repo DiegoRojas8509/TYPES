@@ -79,10 +79,12 @@ export interface MemoryStatus {
 /** Mirrors `MemoryChange` in memory_close.rs: real line diff of one memory file. */
 export interface MemoryChange {
   file: string;
-  action: "nuevo" | "actualizado" | "sin-cambios" | string;
+  action: "nuevo" | "actualizado" | "sin-cambios" | "eliminado" | string;
   summary: string;
   added: string[];
   removed: string[];
+  /** The diff was cut at 40 lines. */
+  truncated: boolean;
 }
 
 /** Mirrors `CloseTopicResult` in memory_close.rs. */

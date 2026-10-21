@@ -25,7 +25,7 @@ fn fixture(with_transcript: bool) -> Fixture {
 fn fake(f: &Fixture, body: &str) -> Cronista {
     let path = f.scripts.path().join("cronista.sh");
     fs::write(&path, body).unwrap();
-    Cronista { program: "sh".into(), script: path }
+    Cronista { program: "sh".into(), script: path, env: vec![] }
 }
 
 fn printing(json: &str) -> String {
@@ -109,8 +109,8 @@ fn missing_script_or_interpreter_says_not_installed() {
     let f = fixture(true);
     for c in [
         None,
-        Some(Cronista { program: "sh".into(), script: f.scripts.path().join("nope.py") }),
-        Some(Cronista { program: "definitely-not-python".into(), script: f.scripts.path().join("x") }),
+        Some(Cronista { program: "sh".into(), script: f.scripts.path().join("nope.py"), env: vec![] }),
+        Some(Cronista { program: "definitely-not-python".into(), script: f.scripts.path().join("x"), env: vec![] }),
     ] {
         if let Some(Cronista { script, .. }) = &c {
             fs::write(script, "").ok();
@@ -166,11 +166,13 @@ fn invalid_session_ids_and_spaces_are_rejected() {
 
 #[test]
 fn line_diff_ignores_blank_lines_keeps_order_and_caps() {
-    let (a, r) = line_diff("a\n\nb\nb\n", "a\nb\nc\n");
+    let (a, r, cut) = line_diff("a\n\nb\nb\n", "a\nb\nc\n");
+    assert!(!cut);
     assert_eq!(a, vec!["c"]);
     assert_eq!(r, vec!["b"]);
     let many: String = (0..100).map(|i| format!("l{i}\n")).collect();
-    let (a, _) = line_diff("", &many);
+    let (a, _, cut) = line_diff("", &many);
+    assert!(cut);
     assert_eq!(a.len(), MAX_DIFF_LINES);
     assert_eq!(a[0], "l0");
 }
@@ -187,4 +189,72 @@ fn find_cronista_prefers_live_path_then_newest_cache() {
     fs::create_dir_all(&live).unwrap();
     fs::write(live.join("cronista.py"), "").unwrap();
     assert!(find_cronista(home.path()).unwrap().script.starts_with(home.path().join("Documents/CLAUDE")));
+}
+
+fn alive(pid: i32) -> bool {
+    unsafe { libc::kill(pid, 0) == 0 }
+}
+
+#[test]
+fn timeout_kills_the_whole_process_group() {
+    let f = fixture(true);
+    let pidfile = f.scripts.path().join("pid");
+    let c = fake(&f, &format!("sleep 30 &\necho $! > '{}'\nwait\n", pidfile.display()));
+    let r = run(&f, Some(&c), SID, Duration::from_millis(600)).unwrap();
+    assert!(!r.ok);
+    let pid: i32 = fs::read_to_string(&pidfile).unwrap().trim().parse().unwrap();
+    std::thread::sleep(Duration::from_millis(300));
+    assert!(!alive(pid), "grandchild must be gone");
+}
+
+#[test]
+fn env_puts_claude_dir_first_and_sets_claude_bin() {
+    let env = build_env(Some(Path::new("/opt/x/bin/claude")), Path::new("/Users/d"));
+    let get = |k: &str| env.iter().find(|(n, _)| n == k).map(|(_, v)| v.clone());
+    let path = get("PATH").unwrap();
+    assert!(path.starts_with("/opt/x/bin:"));
+    assert!(path.contains("/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"));
+    assert!(path.ends_with(":/Users/d/.local/bin"));
+    assert_eq!(get("CLAUDE_BIN").unwrap(), "/opt/x/bin/claude");
+    let none = build_env(None, Path::new("/Users/d"));
+    assert!(none.iter().all(|(n, _)| n != "CLAUDE_BIN"));
+    assert!(none.iter().find(|(n, _)| n == "PATH").unwrap().1.starts_with("/opt/homebrew/bin"));
+}
+
+#[test]
+fn script_gets_the_env_it_was_given() {
+    let f = fixture(true);
+    let out = f.scripts.path().join("env.txt");
+    let mut c = fake(&f, &format!("echo \"$CLAUDE_BIN\" > '{}'\n{}", out.display(), printing(r#"{"ok":true,"cambios":[]}"#)));
+    c.env = vec![("CLAUDE_BIN".into(), "/x/claude".into())];
+    run(&f, Some(&c), SID, Duration::from_secs(10)).unwrap();
+    assert_eq!(fs::read_to_string(out).unwrap().trim(), "/x/claude");
+}
+
+#[test]
+fn stderr_tail_is_the_detail_for_bad_output_or_nonzero_exit() {
+    let f = fixture(true);
+    let c = fake(&f, "printf 'boom\\001 detalle' >&2\necho nojson\nexit 3\n");
+    let r = run(&f, Some(&c), SID, Duration::from_secs(10)).unwrap();
+    assert!(!r.ok);
+    let e = r.error.unwrap();
+    assert!(e.starts_with("El cronista falló: "), "{e}");
+    assert!(e.contains("boom") && e.contains("detalle") && !e.contains('\u{1}'));
+}
+
+#[test]
+fn truncated_and_removed_files_are_flagged() {
+    let f = fixture(true);
+    let many: String = (0..100).map(|i| format!("l{i}\n")).collect();
+    let json = serde_json::json!({"ok":true,"cambios":[
+        {"archivo":"cronista-a.md","accion":"nuevo","resumen":""},
+        {"archivo":"cronista-b.md","accion":"actualizado","resumen":""}],
+        "antes":{"cronista-a.md":null,"cronista-b.md":"x\n"},
+        "despues":{"cronista-a.md":many,"cronista-b.md":null}});
+    let c = fake(&f, &printing(&json.to_string()));
+    let r = run(&f, Some(&c), SID, Duration::from_secs(10)).unwrap();
+    assert!(r.changes[0].truncated && r.changes[0].added.len() == MAX_DIFF_LINES);
+    assert!(!r.changes[1].truncated);
+    assert_eq!(r.changes[1].action, "eliminado");
+    assert_eq!(r.changes[1].removed, vec!["x"]);
 }
