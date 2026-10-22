@@ -1,9 +1,10 @@
 import "./historyPanel.css";
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { CanvasNode } from "../../lib/canvas";
 import { CleanButton } from "./CleanButton";
 import { historyEntries } from "./historyModel";
+import { useSidePanel } from "./sidePanel";
 import { GlyphChart, GlyphDecision, GlyphImage, GlyphNote, GlyphTable, GlyphTimeline, GlyphUnknown, GlyphZone } from "./nodes/glyphs";
 
 const GLYPHS: Record<string, () => ReactNode> = {
@@ -36,7 +37,7 @@ export function HistoryPanel({
   /** Element the panel is rendered into (the board's flow area). Inline when omitted. */
   host?: HTMLElement | null;
 }) {
-  const [open, setOpen] = useState(false);
+  const open = useSidePanel((s) => s.open === "history");
   const entries = useMemo(() => historyEntries(nodes), [nodes]);
   if (entries.length === 0 && !open) return null;
 
@@ -44,7 +45,7 @@ export function HistoryPanel({
     <aside className="history-panel" aria-label="Historial">
       <div className="history-head">
         <h2>Historial</h2>
-        {editable && <CleanButton path={path} editable={editable} />}
+        {editable && <CleanButton path={path} editable={editable} label="Que Claude proponga qué archivar" />}
       </div>
       {entries.length === 0 ? (
         <p className="history-empty">Aún no hay nada archivado.</p>
@@ -79,7 +80,7 @@ export function HistoryPanel({
 
   return (
     <>
-      <button type="button" className="btn history-toggle" aria-pressed={open} title="Bloques archivados de esta pizarra" onClick={() => setOpen((o) => !o)}>
+      <button type="button" className="btn history-toggle" aria-pressed={open} title="Bloques archivados de esta pizarra" onClick={() => useSidePanel.getState().toggle("history")}>
         Historial ({entries.length})
       </button>
       {host ? panel && createPortal(panel, host) : panel}

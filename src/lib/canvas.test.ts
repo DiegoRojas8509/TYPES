@@ -253,6 +253,9 @@ describe("archived", () => {
   it.each([
     ["missing", undefined],
     ["malformed at", { at: "21/10/2026", reason: "x" }],
+    ["month 13", { at: "2026-13-45", reason: "x" }],
+    ["Feb 30", { at: "2026-02-30", reason: "x" }],
+    ["day 00", { at: "2026-10-00", reason: "x" }],
     ["at with extra text", { at: "2026-10-21T10:00", reason: "x" }],
     ["reason not a string", { at: "2026-10-21", reason: 3 }],
     ["not an object", "2026-10-21"],
@@ -260,6 +263,9 @@ describe("archived", () => {
     ["null", null],
   ])("is null when %s", (_n, v) => {
     expect(archivedOf(n(v))).toBeNull();
+  });
+  it("accepts a real leap day", () => {
+    expect(archivedOf(n({ at: "2028-02-29", reason: "x" }))).toEqual({ at: "2028-02-29", reason: "x" });
   });
   it("drops an unknown `by` but keeps the entry", () => {
     expect(archivedOf(n({ at: "2026-10-21", reason: "x", by: "robot" }))).toEqual({ at: "2026-10-21", reason: "x" });

@@ -10,6 +10,7 @@ vi.mock("../../lib/api", async (importOriginal) => {
   };
 });
 
+import { useSidePanel } from "./sidePanel";
 import { api } from "../../lib/api";
 import { parseCanvas } from "../../lib/canvas";
 import { initialState, useApp } from "../../store/app";
@@ -50,6 +51,7 @@ async function addNote() {
 }
 
 beforeEach(() => {
+  useSidePanel.setState({ open: null });
   vi.useFakeTimers();
   disk = EMPTY;
   useApp.setState({ ...initialState(), settings: { workspaceRoot: "/Users/d/TYPES-espacios", claudePath: null } });

@@ -38,8 +38,37 @@ function titleOf(n: CanvasNode): string {
   }
 }
 
+const count = (v: unknown): number => (Array.isArray(v) ? v.length : 0);
+const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
+
+/** Markdown markers dropped so the snippet reads as plain text. */
+function stripMarkdown(md: string): string {
+  return md
+    .replace(/^[ \t]*(?:#{1,6}[ \t]+|>[ \t]?|[-*+][ \t]+|\d+[.)][ \t]+)/gm, "")
+    .replace(/[*_`]/g, "");
+}
+
 function snippetOf(n: CanvasNode): string {
-  const raw = n.type === "text" ? str(n.text) : str(n.title) || str(n.question) || str(n.label);
+  let raw: string;
+  switch (n.type) {
+    case "text":
+      raw = stripMarkdown(str(n.text));
+      break;
+    case "table":
+      raw = `${plural(count(n.rows), "fila", "filas")} × ${plural(count(n.columns), "columna", "columnas")}`;
+      break;
+    case "chart":
+      raw = plural(count(n.labels), "punto", "puntos");
+      break;
+    case "timeline":
+      raw = plural(count(n.items), "avance", "avances");
+      break;
+    case "decision":
+      raw = plural(count(n.options), "opción", "opciones");
+      break;
+    default:
+      raw = str(n.title) || str(n.question) || str(n.label);
+  }
   const flat = raw.replace(/\s+/g, " ").trim();
   return flat.length > SNIPPET_MAX ? `${flat.slice(0, SNIPPET_MAX - 1)}…` : flat;
 }

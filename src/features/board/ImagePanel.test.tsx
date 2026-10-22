@@ -14,6 +14,7 @@ import { api } from "../../lib/api";
 import { TREE_PATH_MIME } from "../../lib/paths";
 import { initialState, useApp } from "../../store/app";
 import { ImagePanel } from "./ImagePanel";
+import { useSidePanel } from "./sidePanel";
 
 const BOARD = "Ropa/Plan.canvas";
 const board = (files: string[]) =>
@@ -54,6 +55,7 @@ async function openPanel() {
 }
 
 beforeEach(() => {
+  useSidePanel.setState({ open: null });
   vi.useFakeTimers();
   errors = vi.spyOn(console, "error").mockImplementation(() => {});
   deleteEntry.mockReset().mockResolvedValue(true);
@@ -79,6 +81,14 @@ afterEach(() => {
 });
 
 describe("ImagePanel", () => {
+  it("closes when another right-hand panel opens", async () => {
+    await mount();
+    await openPanel();
+    expect(screen.getByRole("complementary", { name: "Imágenes" })).toBeTruthy();
+    await act(async () => useSidePanel.getState().toggle("history"));
+    expect(screen.queryByRole("complementary", { name: "Imágenes" })).toBeNull();
+  });
+
   it("toggles open and closed without touching disk", async () => {
     await mount();
     expect(screen.queryByRole("complementary", { name: "Imágenes" })).toBeNull();

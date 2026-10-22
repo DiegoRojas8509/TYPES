@@ -46,6 +46,33 @@ describe("block «Archivar» control", () => {
     expect(screen.getByRole("button", { name: "Archivar «Telas»" })).toBeInTheDocument();
   });
 
+  it("returns focus to the «Archivar» button after Enter and Escape", () => {
+    render(board(note));
+    for (const key of ["Enter", "Escape"]) {
+      fireEvent.click(screen.getByRole("button", { name: "Archivar «Telas»" }));
+      fireEvent.keyDown(screen.getByPlaceholderText("¿Por qué se archiva? (opcional)"), { key });
+      expect(screen.getByRole("button", { name: "Archivar «Telas»" })).toHaveFocus();
+    }
+  });
+
+  it("blur with text keeps the input open and nothing is archived", () => {
+    render(board(note));
+    fireEvent.click(screen.getByRole("button", { name: "Archivar «Telas»" }));
+    const input = screen.getByPlaceholderText("¿Por qué se archiva? (opcional)");
+    fireEvent.change(input, { target: { value: "algo" } });
+    fireEvent.blur(input);
+    expect(archive).not.toHaveBeenCalled();
+    expect(screen.getByPlaceholderText("¿Por qué se archiva? (opcional)")).toHaveValue("algo");
+  });
+
+  it("blur with empty text closes the input without archiving", () => {
+    render(board(note));
+    fireEvent.click(screen.getByRole("button", { name: "Archivar «Telas»" }));
+    fireEvent.blur(screen.getByPlaceholderText("¿Por qué se archiva? (opcional)"));
+    expect(archive).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Archivar «Telas»" })).toBeInTheDocument();
+  });
+
   it("is absent in read-only mode", () => {
     render(board(note, false, undefined, true));
     expect(screen.queryByRole("button", { name: /Archivar/ })).toBeNull();

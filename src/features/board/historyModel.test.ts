@@ -35,12 +35,28 @@ describe("historyEntries", () => {
     expect(t({ type: "table", title: 3 })).toBe("table");
   });
 
-  it("builds a plain-text snippet of at most 120 characters", () => {
+  it("builds a plain-text snippet of at most 120 characters, without markdown markers", () => {
     const long = "palabra ".repeat(40);
     const e = historyEntries([arch({ id: "a", type: "text", ...base, text: `# T\n**negrita** ${long}` }, "2026-10-01")])[0];
     expect(e.snippet.length).toBeLessThanOrEqual(120);
-    expect(e.snippet.startsWith("negrita")).toBe(false); // markdown markers are not stripped, text stays literal
-    expect(e.snippet).toContain("**negrita**");
+    expect(e.snippet.startsWith("T negrita palabra")).toBe(true);
+  });
+
+  it("strips #, *, _, backticks, > and list bullets from text snippets", () => {
+    const text = "## Título\n- uno *dos*\n> cita `code` _it_\n1. tres\n* cuatro";
+    const e = historyEntries([arch({ id: "a", type: "text", ...base, text }, "2026-10-01")])[0];
+    expect(e.snippet).toBe("Título uno dos cita code it tres cuatro");
+  });
+
+  it.each([
+    ["table", { title: "Telas", columns: ["a", "b", "c"], rows: [[1, 2, 3], [4, 5, 6]] }, "2 filas × 3 columnas"],
+    ["table", { title: "Telas", columns: ["a"], rows: [[1]] }, "1 fila × 1 columna"],
+    ["chart", { title: "Ventas", labels: ["a", "b"], series: [{ name: "s", values: [1, 2] }] }, "2 puntos"],
+    ["timeline", { title: "Plan", items: [{ id: "1" }] }, "1 avance"],
+    ["decision", { question: "¿A o B?", options: [{ id: "a" }, { id: "b" }, { id: "c" }] }, "3 opciones"],
+  ])("%s snippet summarises instead of repeating the title", (type, extra, want) => {
+    const e = historyEntries([arch({ id: "a", type, ...base, ...extra }, "2026-10-01")])[0];
+    expect(e.snippet).toBe(want);
   });
 
   it("carries date, reason and author; hostile text stays literal", () => {

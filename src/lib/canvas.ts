@@ -47,11 +47,19 @@ export type Archived = { at: string; reason: string; by?: "claude" | "tu" };
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
+/** A real calendar date: parses and round-trips through UTC, so 2026-02-30 and 2026-13-45 fail. */
+function isRealDate(s: string): boolean {
+  const [y, m, d] = s.split("-").map(Number);
+  const t = new Date(Date.UTC(y, m - 1, d));
+  t.setUTCFullYear(y); // years 0-99 would otherwise map to 1900+
+  return t.getUTCFullYear() === y && t.getUTCMonth() === m - 1 && t.getUTCDate() === d;
+}
+
 /** The node's `archived` entry, or null when absent or malformed (a malformed one leaves the node visible). */
 export function archivedOf(node: CanvasNode): Archived | null {
   const a = node.archived;
   if (!isRecord(a)) return null;
-  if (typeof a.at !== "string" || !DATE_RE.test(a.at) || typeof a.reason !== "string") return null;
+  if (typeof a.at !== "string" || !DATE_RE.test(a.at) || !isRealDate(a.at) || typeof a.reason !== "string") return null;
   return a.by === "claude" || a.by === "tu" ? { at: a.at, reason: a.reason, by: a.by } : { at: a.at, reason: a.reason };
 }
 

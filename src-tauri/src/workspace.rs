@@ -216,27 +216,25 @@ fn migrate_old_image_lines(root: &Path) {
     }
 }
 
-/// Appends the `## Pizarras` section to the root CLAUDE.md when it is missing.
-/// Existing content is never modified; calling it twice does not duplicate.
+/// Appends the `## Pizarras` section to the root CLAUDE.md when no line is exactly that
+/// heading. Existing bytes are never modified; idempotent; the write is atomic and goes
+/// through `resolve`, so a CLAUDE.md symlinked outside the workspace is left untouched.
 pub fn ensure_boards_section(root: &Path) -> Result<()> {
-    let file = root.join("CLAUDE.md");
-    let existing = match std::fs::read(&file) {
-        Ok(bytes) => bytes,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
-        Err(e) => return Err(e.into()),
+    let existing = match read_text_in(root, "CLAUDE.md") {
+        Ok(text) => text,
+        Err(AppError::NotFound(_)) => String::new(),
+        // Outside the root, not text, etc.: leave it alone (best effort, never block startup).
+        Err(_) => return Ok(()),
     };
-    let text = String::from_utf8_lossy(&existing);
-    if text.lines().any(|l| l.trim_end() == "## Pizarras") {
+    if existing.lines().any(|l| l.trim_end() == "## Pizarras") {
         return Ok(());
     }
-    let mut addition = String::new();
-    if !existing.is_empty() {
-        addition.push_str(if existing.ends_with(b"\n") { "\n" } else { "\n\n" });
+    let mut out = existing;
+    if !out.is_empty() {
+        out.push_str(if out.ends_with('\n') { "\n" } else { "\n\n" });
     }
-    addition.push_str(crate::templates::BOARDS_SECTION);
-    let mut f = std::fs::OpenOptions::new().append(true).create(true).open(&file)?;
-    f.write_all(addition.as_bytes())?;
-    Ok(())
+    out.push_str(crate::templates::BOARDS_SECTION);
+    write_text_in(root, "CLAUDE.md", &out)
 }
 
 /// Appends the `## Pizarras vivas` section to the root CLAUDE.md when no line is exactly
@@ -963,6 +961,19 @@ mod tests {
         ensure_root(&root).unwrap();
         let after_root = fs::read_to_string(root.join("CLAUDE.md")).unwrap();
         assert_eq!(after_root, format!("{once}\n{}", crate::templates::LIVING_BOARDS_SECTION));
+    }
+
+    #[test]
+    fn ensure_boards_section_never_writes_through_a_symlinked_claude_md() {
+        let d = tempfile::tempdir().unwrap();
+        let root = d.path().join("w");
+        fs::create_dir(&root).unwrap();
+        let outside = d.path().join("outside.md");
+        fs::write(&outside, "# fuera\n").unwrap();
+        std::os::unix::fs::symlink(&outside, root.join("CLAUDE.md")).unwrap();
+        ensure_boards_section(&root).unwrap();
+        assert_eq!(fs::read_to_string(&outside).unwrap(), "# fuera\n");
+        assert!(fs::symlink_metadata(root.join("CLAUDE.md")).unwrap().file_type().is_symlink());
     }
 
     #[test]

@@ -1,4 +1,4 @@
-import { useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { useBoardActions } from "../boardActions";
 
 /**
@@ -10,9 +10,19 @@ export function ArchiveControl({ id, title }: { id: string; title: string }) {
   const { archive, readOnly } = useBoardActions();
   const [asking, setAsking] = useState(false);
   const [reason, setReason] = useState("");
+  const button = useRef<HTMLButtonElement>(null);
+  const refocus = useRef(false);
+  // After the input closes by key, the button is back: hand focus to it.
+  useEffect(() => {
+    if (!asking && refocus.current) {
+      refocus.current = false;
+      button.current?.focus();
+    }
+  }, [asking]);
   if (readOnly) return null;
 
-  const close = () => {
+  const close = (restoreFocus = false) => {
+    refocus.current = restoreFocus;
     setAsking(false);
     setReason("");
   };
@@ -20,9 +30,9 @@ export function ArchiveControl({ id, title }: { id: string; title: string }) {
     e.stopPropagation();
     if (e.key === "Enter") {
       archive(id, reason);
-      close();
+      close(true);
     } else if (e.key === "Escape") {
-      close();
+      close(true);
     }
   };
 
@@ -36,12 +46,16 @@ export function ArchiveControl({ id, title }: { id: string; title: string }) {
         aria-label="Motivo para archivar"
         onChange={(e) => setReason(e.target.value)}
         onKeyDown={onKeyDown}
-        onBlur={close}
+        onBlur={() => {
+          // Typed text is never dropped silently: only an empty input closes on blur.
+          if (reason === "") close();
+        }}
       />
     );
   }
   return (
     <button
+      ref={button}
       type="button"
       className="block-archive nodrag"
       aria-label={`Archivar «${title}»`}

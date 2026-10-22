@@ -5,6 +5,7 @@ import { useChats } from "../chat/conversations";
 import { initialChat } from "../chat/reducer";
 import { CleanButton, cleanPrompt } from "./CleanButton";
 import { HistoryPanel } from "./HistoryPanel";
+import { useSidePanel } from "./sidePanel";
 
 const base = { x: 0, y: 0, width: 10, height: 10 };
 const HOSTILE = '<img src=x onerror="window.__pwned=1"><script>window.__pwned=1</script>';
@@ -19,6 +20,7 @@ const mount = (props: Partial<React.ComponentProps<typeof HistoryPanel>> = {}) =
 const toggle = () => screen.getByRole("button", { name: /^Historial/ });
 
 beforeEach(() => {
+  useSidePanel.setState({ open: null });
   restore.mockClear();
   useChats.setState({ conversations: {}, send: vi.fn().mockResolvedValue(true) });
 });
@@ -82,6 +84,49 @@ describe("HistoryPanel", () => {
     fireEvent.click(toggle());
     expect(host.contains(screen.getByRole("complementary", { name: "Historial" }))).toBe(true);
     host.remove();
+  });
+});
+
+describe("HistoryPanel head button", () => {
+  it("is named differently from the toolbar one and sends the same text", () => {
+    const send = vi.fn().mockResolvedValue(true);
+    useChats.setState({ conversations: {}, send });
+    render(
+      <>
+        <CleanButton path="Ropa/Plan.canvas" editable />
+        <HistoryPanel path="Ropa/Plan.canvas" nodes={nodes} editable onRestore={restore} />
+      </>,
+    );
+    fireEvent.click(toggle());
+    expect(screen.getAllByRole("button", { name: "Limpiar con Claude" })).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "Que Claude proponga qué archivar" }));
+    expect(send).toHaveBeenCalledWith("Ropa", cleanPrompt("Plan"), []);
+  });
+});
+
+describe("right-hand panels are mutually exclusive", () => {
+  it("opening Historial closes Imágenes and vice versa", () => {
+    function Other() {
+      const open = useSidePanel((s) => s.open);
+      return (
+        <button onClick={() => useSidePanel.getState().toggle("images")} aria-pressed={open === "images"}>
+          otro
+        </button>
+      );
+    }
+    render(
+      <>
+        <Other />
+        <HistoryPanel path="Ropa/Plan.canvas" nodes={nodes} editable onRestore={restore} />
+      </>,
+    );
+    fireEvent.click(toggle());
+    expect(screen.getByRole("complementary", { name: "Historial" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "otro" }));
+    expect(screen.queryByRole("complementary")).toBeNull();
+    fireEvent.click(toggle());
+    expect(screen.getByRole("button", { name: "otro" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("complementary", { name: "Historial" })).toBeInTheDocument();
   });
 });
 

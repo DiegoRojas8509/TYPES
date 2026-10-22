@@ -6,6 +6,7 @@ import { useImageUrl } from "./useImageUrl";
 import { TREE_PATH_MIME, absolutePath, baseName, parentOf } from "../../lib/paths";
 import { useApp } from "../../store/app";
 import type { TreeNode } from "../../lib/api";
+import { useSidePanel } from "./sidePanel";
 import { boardImageFiles, countBoardsUsing } from "./imageUsage";
 
 type Tab = "board" | "all";
@@ -45,7 +46,7 @@ export function ImagePanel({
   const root = useApp((s) => s.settings?.workspaceRoot ?? "");
   const fsSeq = useApp((s) => s.fsChange?.seq ?? 0);
   const notify = useApp((s) => s.notify);
-  const [open, setOpen] = useState(false);
+  const open = useSidePanel((s) => s.open === "images");
   const [tab, setTab] = useState<Tab>("board");
   const [all, setAll] = useState<string[] | null>(null);
   const [tick, setTick] = useState(0);
@@ -182,7 +183,7 @@ export function ImagePanel({
         aria-pressed={open}
         title={inFolder ? "Imágenes de esta carpeta" : "Las imágenes viven dentro de un espacio; mueve la pizarra a uno"}
         disabled={!inFolder}
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => useSidePanel.getState().toggle("images")}
       >
         <Icon />
       </button>

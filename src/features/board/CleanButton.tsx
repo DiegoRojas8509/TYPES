@@ -10,7 +10,7 @@ export function cleanPrompt(name: string): string {
  * Asks Claude, through the chat, which blocks of this board to archive. Like OrderButton it
  * only sends a message; any change to the board arrives as an ordinary external edit.
  */
-export function CleanButton({ path, editable }: { path: string; editable: boolean }) {
+export function CleanButton({ path, editable, label = "Limpiar con Claude" }: { path: string; editable: boolean; label?: string }) {
   const space = path.includes("/") ? spaceOf(path) : null;
   const running = useChats((s) => space !== null && s.conversations[space]?.running === true);
 
@@ -21,7 +21,6 @@ export function CleanButton({ path, editable }: { path: string; editable: boolea
       : running
         ? "Claude está trabajando; espera a que termine"
         : null;
-  const label = "Limpiar con Claude";
 
   return (
     <button
