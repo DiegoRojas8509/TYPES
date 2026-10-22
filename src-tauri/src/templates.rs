@@ -81,6 +81,30 @@ Reglas:
 - Diego puede estar editando la misma pizarra: mantén tus cambios mínimos y edita solo los nodos necesarios, sin reescribir el archivo completo.
 "#;
 
+pub const LIVING_BOARDS_SECTION: &str = r##"## Pizarras vivas
+
+Las pizarras se mantienen cortas: al frente solo lo vigente. Lo que quedó viejo se archiva, no se acumula ni se borra.
+
+Reglas:
+- Cuando un dato nuevo REEMPLAZA a uno viejo (precio, tarifa, fecha, cantidad, condición), NO dejes los dos: archiva el viejo y deja visible el nuevo.
+- Archivar = agregar al nodo viejo el campo `archived`. `at` es la fecha de hoy (AAAA-MM-DD), `reason` dice qué lo reemplazó y `by` es `"claude"`. No cambies ningún otro campo del nodo.
+- Haz lo mismo con escenarios y suposiciones que Diego descartó explícitamente.
+- Si algo solo te parece viejo o repetido, pero nadie lo reemplazó, NO lo archives por tu cuenta: proponle a Diego qué archivarías y por qué, y espera su sí.
+- Nunca borres un bloque. Archivar no borra: Diego lo ve en «Historial» y puede restaurarlo.
+- Las decisiones pendientes viven en bloques `decision` visibles; no las archives mientras estén pendientes.
+- Mantén tus ediciones mínimas: Diego puede estar editando la misma pizarra. Toca solo los nodos necesarios.
+
+Ejemplo de nodo archivado (el nuevo precio queda en otro nodo visible):
+
+```json
+{
+  "id": "a1b2c3d4", "type": "text", "x": 0, "y": 0, "width": 260, "height": 120,
+  "text": "# Tela\nPrecio por metro: $32",
+  "archived": {"at": "2026-10-21", "reason": "ahora $30, antes $32", "by": "claude"}
+}
+```
+"##;
+
 // --- Migration of workspaces created with the old `adjuntos/` templates ---
 // Each OLD_* is a line exactly as the previous templates wrote it; NEW_* is its replacement.
 pub const OLD_ROOT_IMAGES_LINE: &str = "- Las imágenes y archivos adjuntos viven en la carpeta `adjuntos/` de cada espacio. Referéncialos con rutas relativas, por ejemplo `![molde](adjuntos/molde.png)`.";

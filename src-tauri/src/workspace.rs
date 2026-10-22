@@ -176,6 +176,7 @@ pub fn ensure_root(root: &Path) -> Result<()> {
         Err(e) => return Err(e.into()),
     }
     ensure_boards_section(root)?;
+    ensure_living_boards_section(root)?;
     migrate_old_image_lines(root);
     Ok(())
 }
@@ -236,6 +237,27 @@ pub fn ensure_boards_section(root: &Path) -> Result<()> {
     let mut f = std::fs::OpenOptions::new().append(true).create(true).open(&file)?;
     f.write_all(addition.as_bytes())?;
     Ok(())
+}
+
+/// Appends the `## Pizarras vivas` section to the root CLAUDE.md when no line is exactly
+/// that heading. Existing bytes are never modified; idempotent; the write is atomic and
+/// goes through `resolve`, so a CLAUDE.md symlinked outside the workspace is skipped.
+pub fn ensure_living_boards_section(root: &Path) -> Result<()> {
+    let existing = match read_text_in(root, "CLAUDE.md") {
+        Ok(text) => text,
+        Err(AppError::NotFound(_)) => String::new(),
+        // Outside the root, not text, etc.: leave it alone (best effort, never block startup).
+        Err(_) => return Ok(()),
+    };
+    if existing.lines().any(|l| l.trim_end() == "## Pizarras vivas") {
+        return Ok(());
+    }
+    let mut out = existing;
+    if !out.is_empty() {
+        out.push_str(if out.ends_with('\n') { "\n" } else { "\n\n" });
+    }
+    out.push_str(crate::templates::LIVING_BOARDS_SECTION);
+    write_text_in(root, "CLAUDE.md", &out)
 }
 
 fn build_children(dir: &Path, rel_parts: &[String]) -> std::io::Result<Vec<TreeNode>> {
@@ -935,11 +957,12 @@ mod tests {
         ensure_boards_section(&root).unwrap();
         let once = fs::read_to_string(root.join("CLAUDE.md")).unwrap();
         assert!(once.starts_with(original));
-        assert_eq!(once.matches("## Pizarras").count(), 1);
+        assert_eq!(once.matches("## Pizarras\n").count(), 1);
         assert!(once.contains(".canvas") && once.contains("decision"));
         ensure_boards_section(&root).unwrap();
         ensure_root(&root).unwrap();
-        assert_eq!(fs::read_to_string(root.join("CLAUDE.md")).unwrap(), once);
+        let after_root = fs::read_to_string(root.join("CLAUDE.md")).unwrap();
+        assert_eq!(after_root, format!("{once}\n{}", crate::templates::LIVING_BOARDS_SECTION));
     }
 
     #[test]
@@ -947,7 +970,7 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         ensure_boards_section(d.path()).unwrap();
         let md = fs::read_to_string(d.path().join("CLAUDE.md")).unwrap();
-        assert_eq!(md.matches("## Pizarras").count(), 1);
+        assert_eq!(md.matches("## Pizarras\n").count(), 1);
     }
 
     #[test]
@@ -955,7 +978,91 @@ mod tests {
         let (_d, root) = ws();
         let md = fs::read_to_string(root.join("CLAUDE.md")).unwrap();
         assert!(md.starts_with(crate::templates::ROOT_CLAUDE_MD));
-        assert_eq!(md.matches("## Pizarras").count(), 1);
+        assert_eq!(md.matches("## Pizarras\n").count(), 1);
+    }
+
+    const LIVING_HEADING: &str = "## Pizarras vivas";
+
+    fn living_count(md: &str) -> usize {
+        md.lines().filter(|l| l.trim_end() == LIVING_HEADING).count()
+    }
+
+    #[test]
+    fn living_section_is_added_once_after_boards_section() {
+        let (_d, root) = ws();
+        let md = fs::read_to_string(root.join("CLAUDE.md")).unwrap();
+        assert_eq!(living_count(&md), 1);
+        assert!(md.find("## Pizarras\n").unwrap() < md.find(LIVING_HEADING).unwrap());
+        ensure_root(&root).unwrap();
+        ensure_living_boards_section(&root).unwrap();
+        assert_eq!(fs::read_to_string(root.join("CLAUDE.md")).unwrap(), md);
+    }
+
+    #[test]
+    fn living_section_keeps_40_manual_lines_and_boards_section_untouched() {
+        let (_d, root) = ws();
+        let manual: String = (1..=40).map(|i| format!("Línea manual {i}\n")).collect();
+        let original = format!("{manual}\n{}", crate::templates::BOARDS_SECTION);
+        fs::write(root.join("CLAUDE.md"), &original).unwrap();
+        ensure_living_boards_section(&root).unwrap();
+        let after = fs::read_to_string(root.join("CLAUDE.md")).unwrap();
+        assert!(after.starts_with(&original));
+        assert_eq!(living_count(&after), 1);
+        assert!(after.ends_with(crate::templates::LIVING_BOARDS_SECTION));
+    }
+
+    #[test]
+    fn living_section_handles_no_trailing_newline() {
+        let (_d, root) = ws();
+        let original = "# Reglas\n\n## Pizarras\nsin salto final";
+        fs::write(root.join("CLAUDE.md"), original).unwrap();
+        ensure_living_boards_section(&root).unwrap();
+        let after = fs::read_to_string(root.join("CLAUDE.md")).unwrap();
+        assert!(after.starts_with(original));
+        assert_eq!(&after[original.len()..], format!("\n\n{}", crate::templates::LIVING_BOARDS_SECTION));
+    }
+
+    #[test]
+    fn living_section_keeps_crlf_bytes_and_detects_crlf_heading() {
+        let (_d, root) = ws();
+        let original = "# Reglas\r\n\r\nTexto\r\n";
+        fs::write(root.join("CLAUDE.md"), original).unwrap();
+        ensure_living_boards_section(&root).unwrap();
+        let bytes = fs::read(root.join("CLAUDE.md")).unwrap();
+        assert!(bytes.starts_with(original.as_bytes()));
+        let with_heading = format!("{original}## Pizarras vivas\r\nreglas propias\r\n");
+        fs::write(root.join("CLAUDE.md"), &with_heading).unwrap();
+        ensure_living_boards_section(&root).unwrap();
+        assert_eq!(fs::read_to_string(root.join("CLAUDE.md")).unwrap(), with_heading);
+    }
+
+    #[test]
+    fn living_section_skips_claude_md_symlinked_outside() {
+        let d = tempfile::tempdir().unwrap();
+        let root = d.path().join("ws");
+        fs::create_dir(&root).unwrap();
+        let outside = d.path().join("outside.md");
+        fs::write(&outside, "secreto").unwrap();
+        std::os::unix::fs::symlink(&outside, root.join("CLAUDE.md")).unwrap();
+        ensure_living_boards_section(&root).unwrap();
+        assert_eq!(fs::read_to_string(&outside).unwrap(), "secreto");
+    }
+
+    #[test]
+    fn living_section_creates_missing_claude_md() {
+        let d = tempfile::tempdir().unwrap();
+        ensure_living_boards_section(d.path()).unwrap();
+        let md = fs::read_to_string(d.path().join("CLAUDE.md")).unwrap();
+        assert_eq!(md, crate::templates::LIVING_BOARDS_SECTION);
+    }
+
+    #[test]
+    fn living_section_documents_the_archived_field_exactly() {
+        let s = crate::templates::LIVING_BOARDS_SECTION;
+        assert!(s.starts_with("## Pizarras vivas\n"));
+        assert!(s.contains(r#""archived": {"at": "2026-10-21", "reason": "ahora $30, antes $32", "by": "claude"}"#));
+        assert!(s.contains("NO dejes los dos") && s.contains("espera su sí") && s.contains("Nunca borres"));
+        assert!(s.contains("`decision`"));
     }
 
     #[test]
@@ -1289,7 +1396,7 @@ mod tests {
     fn migration_replaces_only_exact_old_lines_and_is_idempotent() {
         let (_d, root) = ws();
         create_space_in(&root, "Ropa").unwrap();
-        let old_root = format!("# Mío\n{OLD_ROOT_LINE}\notra línea\n## Pizarras\n{OLD_BOARD_LINE}\nfin");
+        let old_root = format!("# Mío\n{OLD_ROOT_LINE}\notra línea\n## Pizarras\n{OLD_BOARD_LINE}\nfin\n## Pizarras vivas\n");
         fs::write(root.join("CLAUDE.md"), &old_root).unwrap();
         ensure_root(&root).unwrap();
         let got = fs::read_to_string(root.join("CLAUDE.md")).unwrap();
@@ -1354,7 +1461,7 @@ mod tests {
     #[test]
     fn migration_leaves_crlf_lines_untouched() {
         let (_d, root) = ws();
-        let crlf = format!("# x\r\n{OLD_ROOT_LINE}\r\nfin\r\n## Pizarras\r\n");
+        let crlf = format!("# x\r\n{OLD_ROOT_LINE}\r\nfin\r\n## Pizarras\r\n## Pizarras vivas\r\n");
         fs::write(root.join("CLAUDE.md"), &crlf).unwrap();
         ensure_root(&root).unwrap();
         assert_eq!(fs::read_to_string(root.join("CLAUDE.md")).unwrap(), crlf);
