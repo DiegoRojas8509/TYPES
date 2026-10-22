@@ -1,0 +1,121 @@
+//! Spanish CLAUDE.md templates created by the app inside the workspace.
+
+pub const ROOT_CLAUDE_MD: &str = r#"# Reglas de formato del espacio de trabajo
+
+Esta carpeta es la mesa de trabajo de Diego. Cada carpeta de primer nivel es un espacio (un negocio o proyecto) con su propio `CLAUDE.md` de contexto. Lee ese archivo antes de trabajar en un espacio.
+
+## Cómo se guarda la información
+- La superficie principal de trabajo son las pizarras (`.canvas`): ahí van las notas, tablas, gráficas, líneas de tiempo y decisiones. Su formato está en la sección «Pizarras» de este archivo.
+- Las páginas son archivos Markdown (GFM) con extensión `.md`: texto descriptivo para explicar, y tablas para los datos duros (precios, medidas, cantidades).
+- Las salidas visuales (dashboards, reportes, previews de moldes) se entregan como archivos `.html` autocontenidos: CSS y JavaScript dentro del mismo archivo, sin depender de internet ni de otros archivos.
+- Las imágenes viven en la carpeta `Imágenes/` de cada carpeta (cada nivel tiene la suya, junto a las pizarras y páginas que las usan). Referéncialas con rutas relativas a la carpeta del archivo, por ejemplo `![molde](Imágenes/molde.png)`.
+- No uses formatos propietarios ni bases de datos: todo debe poder abrirse con un editor de texto.
+
+## Cómo trabajar
+- En todo cálculo muestra las fórmulas y los supuestos que usaste, para que Diego pueda revisarlos y corregirlos.
+- Nunca borres ni reescribas texto de Diego sin que lo pida. Para agregar o corregir, hazlo en una sección nueva o señala el cambio.
+- Escribe en español, claro y conciso.
+- Trabaja solo dentro del espacio indicado; no leas ni modifiques otras carpetas.
+"#;
+
+pub const SPACE_CLAUDE_MD: &str = r#"# Contexto de este negocio
+
+Completa estas secciones. Claude las lee antes de analizar, costear o generar reportes. Sigue también las reglas de formato del `CLAUDE.md` de la carpeta superior: la información vive sobre todo en pizarras (`.canvas`, ver la sección «Pizarras» de ese archivo) y, para texto largo, en páginas en Markdown con tablas para los datos, salidas visuales en HTML autocontenido, imágenes en `Imágenes/` de la misma carpeta, y fórmulas y supuestos visibles en cada cálculo.
+
+## Qué es este negocio
+
+
+## Proveedores y tarifas
+
+
+## Mermas y supuestos
+
+
+## Márgenes objetivo
+
+
+## Cómo quiero los reportes
+
+"#;
+
+/// Byte for byte what the frontend's `serializeCanvas` writes for an empty board
+/// (2-space indent, trailing newline), so the first edit does not reformat the file.
+pub const EMPTY_CANVAS: &str = "{\n  \"nodes\": [],\n  \"edges\": []\n}\n";
+
+pub const BOARDS_SECTION: &str = r#"## Pizarras
+
+Una pizarra es un archivo `.canvas` (formato JSON Canvas): un archivo de texto con JSON que Diego ve como un lienzo con bloques. Lo lees y lo modificas con Read y Edit, como cualquier otro archivo de texto.
+
+Estructura:
+
+```json
+{ "nodes": [ ... ], "edges": [ {"id": "a1b2c3d4", "fromNode": "id1", "toNode": "id2", "label": "opcional"} ] }
+```
+
+Todo nodo lleva `id` (texto), `type`, `x`, `y`, `width`, `height` (números) y opcionalmente `color` (texto).
+
+| type | campos | se ve como |
+|------|--------|-----------|
+| `text` | `text`: Markdown | Nota (el primer `#` es el título) |
+| `file` | `file`: ruta relativa a la carpeta del `.canvas` | Imagen |
+| `group` | `label` | Zona para agrupar |
+| `table` | `title?`, `columns`: texto[], `rows`: texto[][] | Tabla editable |
+| `chart` | `title`, `kind`: `"bar"`, `"line"` o `"pie"`, `labels`: texto[], `series`: `{name, values: número[]}`[] | Gráfica |
+| `timeline` | `title`, `items`: `{date, title, detail?, status: "hecho"/"en curso"/"pendiente"}`[] | Línea de tiempo |
+| `decision` | `question`, `options`: `{name, pros: texto[], cons: texto[]}`[], `chosen?`, `rationale?` | Decisión |
+
+Cuándo usar cada bloque:
+- `text` (nota): ideas, avances, observaciones.
+- `table`: datos duros como precios, medidas o cantidades.
+- `chart`: comparar números (costos, ventas, márgenes).
+- `timeline`: avances y fechas.
+- `decision`: opciones con pros y contras, y qué se eligió y por qué.
+- `file` (imagen): archivos de la carpeta `Imágenes/` junto a la pizarra.
+
+Reglas:
+- Cada `id` es único en la pizarra (8 caracteres alfanuméricos, por ejemplo `a1b2c3d4`).
+- El JSON debe ser válido siempre: revísalo antes de terminar. Un JSON roto deja la pizarra inservible.
+- Las imágenes viven en la carpeta `Imágenes/` de la propia carpeta de la pizarra (no en la de un nivel superior) y se referencian con ruta relativa a esa carpeta, por ejemplo `Imágenes/molde.png`.
+- Nunca borres ni cambies el contenido de los bloques de Diego. Para agregar información, crea bloques nuevos.
+- Para ORGANIZAR una pizarra solo cambia `x`, `y`, `width` y `height`, y crea nodos `group` para agrupar. No toques el contenido.
+- Diego puede estar editando la misma pizarra: mantén tus cambios mínimos y edita solo los nodos necesarios, sin reescribir el archivo completo.
+"#;
+
+pub const LIVING_BOARDS_SECTION: &str = r##"## Pizarras vivas
+
+Las pizarras se mantienen cortas: al frente solo lo vigente. Lo que quedó viejo se archiva, no se acumula ni se borra.
+
+Reglas:
+- Cuando un dato nuevo REEMPLAZA a uno viejo (precio, tarifa, fecha, cantidad, condición), NO dejes los dos: archiva el viejo y deja visible el nuevo.
+- Archivar = agregar al nodo viejo el campo `archived`. `at` es la fecha de hoy (AAAA-MM-DD), `reason` dice qué lo reemplazó y `by` es `"claude"`. No cambies ningún otro campo del nodo.
+- Haz lo mismo con escenarios y suposiciones que Diego descartó explícitamente.
+- Si algo solo te parece viejo o repetido, pero nadie lo reemplazó, NO lo archives por tu cuenta: proponle a Diego qué archivarías y por qué, y espera su sí.
+- Nunca borres un bloque. Archivar no borra: Diego lo ve en «Historial» y puede restaurarlo.
+- Las decisiones pendientes viven en bloques `decision` visibles; no las archives mientras estén pendientes.
+- Mantén tus ediciones mínimas: Diego puede estar editando la misma pizarra. Toca solo los nodos necesarios.
+
+Ejemplo de nodo archivado (el nuevo precio queda en otro nodo visible):
+
+```json
+{
+  "id": "a1b2c3d4", "type": "text", "x": 0, "y": 0, "width": 260, "height": 120,
+  "text": "# Tela\nPrecio por metro: $32",
+  "archived": {"at": "2026-10-21", "reason": "ahora $30, antes $32", "by": "claude"}
+}
+```
+"##;
+
+// --- Migration of workspaces created with the old `adjuntos/` templates ---
+// Each OLD_* is a line exactly as the previous templates wrote it; NEW_* is its replacement.
+pub const OLD_ROOT_IMAGES_LINE: &str = "- Las imágenes y archivos adjuntos viven en la carpeta `adjuntos/` de cada espacio. Referéncialos con rutas relativas, por ejemplo `![molde](adjuntos/molde.png)`.";
+pub const NEW_ROOT_IMAGES_LINE: &str = "- Las imágenes viven en la carpeta `Imágenes/` de cada carpeta (cada nivel tiene la suya, junto a las pizarras y páginas que las usan). Referéncialas con rutas relativas a la carpeta del archivo, por ejemplo `![molde](Imágenes/molde.png)`.";
+pub const OLD_SPACE_IMAGES_LINE: &str = "Completa estas secciones. Claude las lee antes de analizar, costear o generar reportes. Sigue también las reglas de formato del `CLAUDE.md` de la carpeta superior: la información vive sobre todo en pizarras (`.canvas`, ver la sección «Pizarras» de ese archivo) y, para texto largo, en páginas en Markdown con tablas para los datos, salidas visuales en HTML autocontenido, adjuntos en `adjuntos/`, y fórmulas y supuestos visibles en cada cálculo.";
+pub const NEW_SPACE_IMAGES_LINE: &str = "Completa estas secciones. Claude las lee antes de analizar, costear o generar reportes. Sigue también las reglas de formato del `CLAUDE.md` de la carpeta superior: la información vive sobre todo en pizarras (`.canvas`, ver la sección «Pizarras» de ese archivo) y, para texto largo, en páginas en Markdown con tablas para los datos, salidas visuales en HTML autocontenido, imágenes en `Imágenes/` de la misma carpeta, y fórmulas y supuestos visibles en cada cálculo.";
+pub const OLD_BOARD_IMAGES_LINE: &str = "- Las imágenes viven en `adjuntos/` y se referencian con ruta relativa a la carpeta de la pizarra, por ejemplo `adjuntos/molde.png` (o `../adjuntos/molde.png` si la pizarra está en una subcarpeta).";
+pub const NEW_BOARD_IMAGES_LINE: &str = "- Las imágenes viven en la carpeta `Imágenes/` de la propia carpeta de la pizarra (no en la de un nivel superior) y se referencian con ruta relativa a esa carpeta, por ejemplo `Imágenes/molde.png`.";
+
+pub const LINE_MIGRATIONS: [(&str, &str); 3] = [
+    (OLD_ROOT_IMAGES_LINE, NEW_ROOT_IMAGES_LINE),
+    (OLD_SPACE_IMAGES_LINE, NEW_SPACE_IMAGES_LINE),
+    (OLD_BOARD_IMAGES_LINE, NEW_BOARD_IMAGES_LINE),
+];

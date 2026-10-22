@@ -1,0 +1,198 @@
+/* Shared by the table block and the chart block: inline header title, and the editable data grid
+   (the table itself, and the chart's "Datos" view). */
+.block-title.is-editable {
+  display: flex;
+  flex: 1;
+  overflow: visible;
+}
+.block-title-input {
+  min-width: 4ch;
+  max-width: 100%;
+  margin-left: calc(var(--space-3) * -1);
+  padding: var(--space-1) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-overflow: ellipsis;
+}
+.block-title-input:hover,
+.block-title-input:focus {
+  background: var(--bg-hover);
+}
+.block-title-input::placeholder {
+  color: var(--text-muted);
+}
+
+/* Data grid shared by the table block and the chart's "Datos" view. */
+.table-body {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.table-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.data-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--text-md);
+  font-variant-numeric: tabular-nums;
+}
+.data-table th,
+.data-table td {
+  min-width: 72px;
+  padding: 0;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  font-weight: 400;
+}
+.data-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg-side);
+  border-bottom-color: var(--border-strong);
+}
+.data-table th.corner {
+  padding: var(--space-3) var(--space-4);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+.data-table .row-tools {
+  width: 24px;
+  min-width: 24px;
+  text-align: center;
+}
+.data-table th.row-tools {
+  padding: 0;
+}
+.cell-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.cell-input {
+  width: 100%;
+  min-width: 0;
+  padding: 6px var(--space-4);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-variant-numeric: inherit;
+}
+.cell-input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  background: var(--bg);
+}
+.cell-input.is-num,
+.data-table th.is-num .cell-input {
+  text-align: right;
+}
+.cell-head {
+  padding-right: var(--space-5);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.cell-input::placeholder {
+  color: var(--text-faint);
+}
+.cell-del {
+  display: grid;
+  place-content: center;
+  width: 18px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.cell-wrap .cell-del {
+  position: absolute;
+  right: 2px;
+}
+.data-table tr:hover .row-tools .cell-del,
+.data-table tr:focus-within .row-tools .cell-del,
+.cell-wrap:hover .cell-del,
+.cell-wrap:focus-within .cell-del,
+.cell-del:focus-visible {
+  opacity: 1;
+}
+.cell-del:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--danger);
+}
+.cell-del:disabled {
+  cursor: default;
+  opacity: 0;
+}
+.data-bar {
+  display: flex;
+  flex: none;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border);
+}
+.data-btn {
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.data-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.data-btn:focus-visible,
+.cell-del:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Table block: cells wrap and grow with their text (textarea sized in TableCell.tsx). */
+textarea.cell-input {
+  display: block;
+  resize: none;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+}
+.block-table .data-table th,
+.block-table .data-table td {
+  min-width: 96px;
+  vertical-align: top;
+}
+.block-table .data-table .row-tools {
+  min-width: 24px;
+}
+.block-table .data-table {
+  table-layout: auto;
+}
+.fit-content {
+  display: flow-root;
+}
+.data-btn-fit {
+  margin-left: auto;
+}
