@@ -81,10 +81,11 @@ Cada feature es dueña de sus componentes y su lógica. Se comunican por los sto
 
 ### Integración con Claude Code
 - Binario, en este orden: ruta manual en ajustes → `claude` en el PATH del shell de login → la extensión de VS Code más reciente en `~/.vscode/extensions/anthropic.claude-code-*/resources/native-binary/claude`. (En esta Mac hoy solo existe la tercera.)
-- Un proceso por mensaje: `claude -p <texto> --output-format stream-json --verbose --include-partial-messages --permission-mode acceptEdits --allowedTools Read Write Edit Glob Grep WebSearch WebFetch Bash Skill Agent NotebookEdit [--model <alias>] [--resume <session_id>]`, con `cwd` = carpeta del espacio.
+- Un proceso por mensaje: `claude -p <texto> --output-format stream-json --verbose --include-partial-messages --chrome --permission-mode acceptEdits --allowedTools Read Write Edit Glob Grep WebSearch WebFetch Bash Skill Agent NotebookEdit mcp__claude-in-chrome [--model <alias>] [--resume <session_id>]`, con `cwd` = carpeta del espacio.
 - Una conversación por espacio; el `session_id` se guarda para continuarla.
 - Si hay una pizarra `.canvas` abierta dentro del espacio, el prompt empieza con `Pizarra abierta: <ruta relativa al espacio>` (parámetro `board` de `claude_send`). El botón "Ordenar con Claude" de la pizarra solo envía un mensaje por el chat; nunca escribe el `.canvas`.
 - Las imágenes del chat se guardan en `<espacio>/Imágenes/` (`save_attachment`) y se le pasan a Claude como rutas en el mensaje.
+- Navegador (decisión de Diego, 2026-10-27): `--chrome` conecta al agente con la extensión Claude in Chrome instalada en **Google Chrome** (no Brave: el puente nativo `com.anthropic.claude_code_browser_extension` solo se registra para Chrome). Abre sus propias pestañas en ese Chrome; Diego no necesita mirarlo. Si Chrome o la extensión no están, el agente sigue sin navegador.
 - Bash, Skill, Agent y NotebookEdit permitidos al agente embebido (decisión de Diego, 2026-10-13: mismos accesos que Claude Code en su terminal). En modo no interactivo no hay forma de aprobar permisos, así que van sin restricción. Riesgo aceptado: una nota o página web con instrucciones maliciosas podría hacerle ejecutar comandos. Si hace falta, diseñar una interfaz de permisos o restringir con `Bash(patrón)`.
 - Selector de modelo en el compositor (`src/lib/model.ts`, se guarda en localStorage); se pasa como `--model` por mensaje. "Predeterminado" = el modelo por defecto del Claude Code instalado.
 

@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, State};
 
-const ALLOWED_TOOLS: &str = "Read,Write,Edit,Glob,Grep,WebSearch,WebFetch,Bash,Skill,Agent,NotebookEdit";
+const ALLOWED_TOOLS: &str = "Read,Write,Edit,Glob,Grep,WebSearch,WebFetch,Bash,Skill,Agent,NotebookEdit,mcp__claude-in-chrome";
 
 // ---------- binary lookup (pure) ----------
 
@@ -99,6 +99,7 @@ pub fn build_args(
         "stream-json",
         "--verbose",
         "--include-partial-messages",
+        "--chrome",
         "--permission-mode",
         "acceptEdits",
         "--allowedTools",
@@ -467,6 +468,8 @@ mod tests {
         }
         assert!(a.contains(&ALLOWED_TOOLS.to_string()));
         assert!(ALLOWED_TOOLS.split(',').any(|x| x == "Bash"));
+        assert!(a.iter().any(|x| x == "--chrome"), "missing --chrome");
+        assert!(ALLOWED_TOOLS.split(',').any(|x| x == "mcp__claude-in-chrome"));
         assert!(!a.iter().any(|x| x == "--resume"));
         // The prompt is the last argument, behind `--`.
         let n = a.len();
