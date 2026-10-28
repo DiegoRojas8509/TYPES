@@ -1,0 +1,232 @@
+import { fireEvent, render } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// recharts measures its container, which jsdom cannot do: the canvas is its own
+// component (ChartCanvas.test.tsx covers it) and is stubbed out here.
+vi.mock("./ChartCanvas", () => ({
+  ChartCanvas: (p: { data: { kind: string } }) => <div data-testid="chart-canvas" data-kind={p.data.kind} />,
+}));
+
+import { initialState, useApp } from "../../../store/app";
+import { ChartNode } from "./ChartNode";
+import { board, isKnown, make, update } from "./dataTestKit";
+import { flowNodeTypes, nodeTypes } from "./index";
+import { TableNode } from "./TableNode";
+import { toFlowNode } from "../boardModel";
+
+let errors: ReturnType<typeof vi.spyOn>[] = [];
+beforeEach(() => {
+  update.mockReset();
+  useApp.setState({ ...initialState(), settings: { workspaceRoot: "/Users/d/TYPES-espacios", claudePath: null } });
+  errors = [vi.spyOn(console, "error"), vi.spyOn(console, "warn")];
+});
+afterEach(() => {
+  // No stray console output from either block.
+  for (const spy of errors) {
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  }
+});
+
+const title = (c: HTMLElement) => c.querySelector(".block-title");
+
+describe("registry", () => {
+  it("registers table and chart, and boardModel maps those canvas types to them", () => {
+    expect(nodeTypes.table).toBe(TableNode);
+    expect(nodeTypes.chart).toBe(ChartNode);
+    expect(flowNodeTypes.table).toBe(TableNode);
+    expect(flowNodeTypes.chart).toBe(ChartNode);
+    expect(toFlowNode(make({ type: "table" }), isKnown).type).toBe("table");
+    expect(toFlowNode(make({ type: "chart" }), isKnown).type).toBe("chart");
+  });
+});
+
+describe("TableNode", () => {
+  const table = (extra: Record<string, unknown> = {}) =>
+    make({ type: "table", title: "Costos", columns: ["Concepto", "Valor"], rows: [["Tela", "12"], ["Hilo", "3"]], ...extra });
+  const cell = (c: HTMLElement, r: number, k: number) => c.querySelector(`textarea[aria-label="Fila ${r}, columna ${k}"]`) as HTMLTextAreaElement;
+  const head = (c: HTMLElement, k: number) => c.querySelector(`textarea[aria-label="Encabezado de columna ${k}"]`) as HTMLTextAreaElement;
+
+  it("renders the title, headers and cells", () => {
+    const { container } = render(board(table()));
+    expect((container.querySelector(".block-title input") as HTMLInputElement).value).toBe("Costos");
+    expect(head(container, 1).value).toBe("Concepto");
+    expect(cell(container, 2, 2).value).toBe("3");
+  });
+
+  it("editing a cell calls update with new rows and leaves the original arrays alone", () => {
+    const node = table();
+    const original = JSON.parse(JSON.stringify(node));
+    const { container } = render(board(node));
+    fireEvent.change(cell(container, 1, 2), { target: { value: "15" } });
+    expect(update).toHaveBeenCalledTimes(1);
+    const [id, patch] = update.mock.calls[0];
+    expect(id).toBe("n1");
+    expect(patch).toEqual({ columns: ["Concepto", "Valor"], rows: [["Tela", "15"], ["Hilo", "3"]] });
+    expect(patch.rows).not.toBe(node.rows);
+    // only the edited row is rebuilt; the other row is carried over as it was
+    expect(patch.rows[0]).not.toBe((node.rows as string[][])[0]);
+    expect(patch.rows[1]).toBe((node.rows as string[][])[1]);
+    expect(node).toEqual(original);
+  });
+
+  it("shows an object row, an object cell and a null row read-only without throwing, and never as [object Object]", () => {
+    const spy = vi.spyOn(console, "error");
+    const { container } = render(
+      board(table({ rows: [{ Concepto: "Tela", Valor: 12 }, ["Hilo", { precio: 3 }], null, ["Botón", 5]] as never })),
+    );
+    expect(cell(container, 1, 1).value).toBe("Tela");
+    expect(cell(container, 1, 2).value).toBe("12");
+    expect(cell(container, 1, 1)).toBeDisabled();
+    expect(cell(container, 1, 1)).toHaveAttribute("title", "Fila en otro formato; edítala desde el chat");
+    expect(cell(container, 2, 2).value).toBe('{"precio":3}');
+    expect(cell(container, 2, 2)).toBeDisabled();
+    expect(cell(container, 2, 1)).not.toBeDisabled();
+    expect(cell(container, 3, 1)).toBeDisabled();
+    expect(cell(container, 4, 2)).not.toBeDisabled();
+    expect(container.innerHTML).not.toContain("[object Object]");
+    expect(update).not.toHaveBeenCalled();
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it("editing one cell leaves object rows, object cells, numbers and nulls exactly as found", () => {
+    const obj = { Concepto: "Tela", Valor: 12 };
+    const inner = { precio: 3 };
+    const hilo = ["Hilo", inner];
+    const node = table({ rows: [obj, hilo, null, ["Botón", 5]] as never });
+    const { container } = render(board(node));
+    fireEvent.change(cell(container, 4, 1), { target: { value: "Cierre" } });
+    expect(update).toHaveBeenCalledTimes(1);
+    const [, patch] = update.mock.calls[0];
+    expect(patch.columns).toEqual(["Concepto", "Valor"]);
+    expect(patch.rows).toEqual([obj, ["Hilo", inner], null, ["Cierre", 5]]);
+    expect(patch.rows[0]).toBe(obj);
+    expect(patch.rows[1]).toBe(hilo);
+    expect(patch.rows[3][1]).toBe(5);
+  });
+
+  it("editing a header calls update with the new columns", () => {
+    const { container } = render(board(table()));
+    fireEvent.change(head(container, 2), { target: { value: "Precio" } });
+    expect(update).toHaveBeenCalledWith("n1", { columns: ["Concepto", "Precio"], rows: [["Tela", "12"], ["Hilo", "3"]] });
+  });
+
+  it("'+ fila' adds a row with one empty string per column", () => {
+    const { getByRole } = render(board(table()));
+    fireEvent.click(getByRole("button", { name: "+ fila" }));
+    expect(update).toHaveBeenCalledWith("n1", { columns: ["Concepto", "Valor"], rows: [["Tela", "12"], ["Hilo", "3"], ["", ""]] });
+  });
+
+  it("'+ columna' adds a header and a cell to every row", () => {
+    const { getByRole } = render(board(table()));
+    fireEvent.click(getByRole("button", { name: "+ columna" }));
+    expect(update).toHaveBeenCalledWith("n1", { columns: ["Concepto", "Valor", ""], rows: [["Tela", "12", ""], ["Hilo", "3", ""]] });
+  });
+
+  it("deletes a row (zero rows is allowed) and a column", () => {
+    const { getByRole } = render(board(table({ rows: [["Tela", "12"]] })));
+    fireEvent.click(getByRole("button", { name: "Eliminar fila 1" }));
+    expect(update).toHaveBeenLastCalledWith("n1", { columns: ["Concepto", "Valor"], rows: [] });
+    fireEvent.click(getByRole("button", { name: "Eliminar columna «Concepto»" }));
+    expect(update).toHaveBeenLastCalledWith("n1", { columns: ["Valor"], rows: [["12"]] });
+  });
+
+  it("delete buttons are reachable by keyboard and say what they delete", () => {
+    const { container, getByRole } = render(board(table({ columns: ["Concepto", "Precio", ""] , rows: [["Tela", "12", ""], ["Hilo", "3", ""]] })));
+    for (const name of ["Eliminar fila 1", "Eliminar fila 2", "Eliminar columna «Precio»", "Eliminar columna 3"]) {
+      expect(getByRole("button", { name })).not.toHaveAttribute("tabindex");
+    }
+    expect(container.querySelector("button[tabindex='-1']")).toBeNull();
+  });
+
+  it("never deletes the last column", () => {
+    const { getByRole } = render(board(table({ columns: ["Solo"], rows: [["x"]] })));
+    const del = getByRole("button", { name: "Eliminar columna «Solo»" });
+    expect(del).toBeDisabled();
+    fireEvent.click(del);
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("title edit calls update(id, { title }); an empty title shows 'Tabla'", () => {
+    const { container } = render(board(table()));
+    fireEvent.change(container.querySelector(".block-title input") as HTMLInputElement, { target: { value: "Telas" } });
+    expect(update).toHaveBeenCalledWith("n1", { title: "Telas" });
+    const empty = render(board(table({ title: undefined })));
+    const input = empty.container.querySelector(".block-title input") as HTMLInputElement;
+    expect(input.value).toBe("");
+    expect(input.placeholder).toBe("Tabla");
+    expect(input).toHaveAccessibleName("Título de la tabla");
+  });
+
+  it("Enter moves to the cell below; Tab keeps its natural order", () => {
+    const { container } = render(board(table()));
+    head(container, 1).focus();
+    fireEvent.keyDown(head(container, 1), { key: "Enter" });
+    expect(document.activeElement).toBe(cell(container, 1, 1));
+    fireEvent.keyDown(cell(container, 1, 1), { key: "Enter" });
+    expect(document.activeElement).toBe(cell(container, 2, 1));
+    fireEvent.keyDown(cell(container, 2, 1), { key: "Enter" });
+    expect(document.activeElement).toBe(cell(container, 2, 1));
+  });
+
+  it("keeps editable inputs out of React Flow's drag, wheel and pan", () => {
+    const { container } = render(board(table()));
+    expect(cell(container, 1, 1).closest(".nodrag.nopan")).not.toBeNull();
+    expect(container.querySelector(".block-title input")?.className).toContain("nodrag");
+  });
+
+  it("right-aligns numeric columns for display only", () => {
+    const { container } = render(board(table()));
+    expect(cell(container, 1, 2).className).toContain("is-num");
+    expect(cell(container, 1, 1).className).not.toContain("is-num");
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("renders malformed data without throwing; an edit rewrites only the edited row and loses no cell", () => {
+    const node = make({
+      type: "table",
+      columns: ["A", "B"],
+      rows: [[1, 2, 3], ["solo"], "raro", [null, undefined]],
+    });
+    const { container } = render(board(node));
+    expect(cell(container, 1, 1).value).toBe("1");
+    expect(cell(container, 1, 2).value).toBe("2");
+    // a cell beyond the headers is shown under an extra empty header, never dropped
+    expect(cell(container, 1, 3).value).toBe("3");
+    expect(head(container, 3).value).toBe("");
+    expect(cell(container, 2, 2).value).toBe("");
+    expect(cell(container, 3, 1).value).toBe("raro");
+    expect(cell(container, 3, 1)).toBeDisabled();
+    expect(update).not.toHaveBeenCalled();
+    fireEvent.change(cell(container, 2, 1), { target: { value: "x" } });
+    // only row 2 changes; the numbers, the string row and the null cells stay as found
+    expect(update).toHaveBeenCalledWith("n1", { columns: ["A", "B"], rows: [[1, 2, 3], ["x"], "raro", [null, undefined]] });
+  });
+
+  it("renders a node with no rows or columns at all", () => {
+    const { container, getByRole } = render(board(make({ type: "table" })));
+    expect(title(container)).toBeInTheDocument();
+    fireEvent.click(getByRole("button", { name: "+ fila" }));
+    expect(update).toHaveBeenCalledWith("n1", { columns: [""], rows: [[""]] });
+  });
+
+  it("never calls update on mount, select, focus or blur without a change", () => {
+    const { container, rerender } = render(board(table()));
+    rerender(board(table(), true));
+    for (const input of container.querySelectorAll("input, textarea")) {
+      fireEvent.focus(input);
+      fireEvent.blur(input);
+    }
+    fireEvent.click(cell(container, 1, 1));
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("scrolls inside the block and only blocks board wheel zoom when it can scroll", () => {
+    const { container } = render(board(table()));
+    const area = container.querySelector(".table-scroll") as HTMLElement;
+    expect(area).toBeInTheDocument();
+    expect(area.className).not.toContain("nowheel"); // jsdom measures 0: nothing to scroll
+  });
+});
+
