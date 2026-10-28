@@ -188,7 +188,7 @@ pub fn status_in(root: &Path, home: &Path, space: &str) -> Result<MemoryStatus> 
     Ok(st)
 }
 
-fn home() -> Result<PathBuf> {
+pub(crate) fn home() -> Result<PathBuf> {
     dirs::home_dir().ok_or_else(|| AppError::Io("no encuentro la carpeta personal".into()))
 }
 

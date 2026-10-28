@@ -81,6 +81,7 @@ pub fn build_args(
     session_id: Option<&str>,
     model: Option<&str>,
     board: Option<&str>,
+    memory_dir: Option<&Path>,
 ) -> Vec<String> {
     let mut prompt = match board {
         Some(b) => format!("Pizarra abierta: {b}\n\n{text}"),
@@ -108,6 +109,12 @@ pub fn build_args(
     .iter()
     .map(|s| s.to_string())
     .collect();
+    // Claude Code keys its auto-memory by the git repo root; `espacios/` lives inside the code repo,
+    // so point it at the space's own memory (the one the cronista writes) explicitly.
+    if let Some(dir) = memory_dir {
+        args.push("--settings".into());
+        args.push(serde_json::json!({ "autoMemoryDirectory": dir.to_string_lossy() }).to_string());
+    }
     // Alias (`opus`, `sonnet`, `haiku`) or full id; anything odd is ignored so it can't act as a flag.
     if let Some(m) = model.filter(|m| !m.is_empty() && !m.starts_with('-') && m.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_' | '[' | ']'))) {
         args.push("--model".into());
@@ -294,7 +301,8 @@ pub fn claude_send(
         return Err(AppError::Invalid("el espacio no es una carpeta".into()));
     }
     let bin = locate(&state.snapshot()).ok_or_else(claude_not_found)?;
-    let args = build_args(&text, &attachments, session_id.as_deref(), model.as_deref(), board.as_deref());
+    let memory_dir = crate::memory::home().ok().and_then(|h| crate::memory::memory_dir_in(&h, &cwd));
+    let args = build_args(&text, &attachments, session_id.as_deref(), model.as_deref(), board.as_deref(), memory_dir.as_deref());
     let mut child = Command::new(&bin)
         .args(&args)
         .current_dir(&cwd)
@@ -461,7 +469,7 @@ mod tests {
 
     #[test]
     fn build_args_has_required_flags_and_bash() {
-        let a = build_args("Responde solo: ok", &[], None, None, None);
+        let a = build_args("Responde solo: ok", &[], None, None, None, None);
         assert_eq!(a.first().map(String::as_str), Some("-p"));
         for f in ["--output-format", "stream-json", "--verbose", "--include-partial-messages", "--permission-mode", "acceptEdits", "--allowedTools"] {
             assert!(a.iter().any(|x| x == f), "missing {f}");
@@ -479,18 +487,18 @@ mod tests {
 
     #[test]
     fn build_args_adds_model_only_when_safe() {
-        let a = build_args("hola", &[], None, Some("opus"), None);
+        let a = build_args("hola", &[], None, Some("opus"), None, None);
         let i = a.iter().position(|x| x == "--model").expect("--model");
         assert_eq!(a[i + 1], "opus");
         for bad in ["", "--version", "a b", "x;y"] {
-            assert!(!build_args("hola", &[], None, Some(bad), None).iter().any(|x| x == "--model"), "{bad}");
+            assert!(!build_args("hola", &[], None, Some(bad), None, None).iter().any(|x| x == "--model"), "{bad}");
         }
-        assert!(!build_args("hola", &[], None, None, None).iter().any(|x| x == "--model"));
+        assert!(!build_args("hola", &[], None, None, None, None).iter().any(|x| x == "--model"));
     }
 
     #[test]
     fn build_args_adds_resume() {
-        let a = build_args("hola", &[], Some("abc-123"), None, None);
+        let a = build_args("hola", &[], Some("abc-123"), None, None, None);
         let i = a.iter().position(|x| x == "--resume").unwrap();
         assert_eq!(a[i + 1], "abc-123");
         assert!(i < a.iter().position(|x| x == "--").unwrap());
@@ -498,7 +506,7 @@ mod tests {
 
     #[test]
     fn build_args_lists_attachments() {
-        let a = build_args("mira", &["Ropa/adjuntos/a b.png".into(), "Ropa/adjuntos/c.png".into()], None, None, None);
+        let a = build_args("mira", &["Ropa/adjuntos/a b.png".into(), "Ropa/adjuntos/c.png".into()], None, None, None, None);
         assert_eq!(
             a.last().unwrap(),
             "mira\n\nArchivos adjuntos (léelos con Read):\n- Ropa/adjuntos/a b.png\n- Ropa/adjuntos/c.png"
@@ -507,25 +515,25 @@ mod tests {
 
     #[test]
     fn build_args_puts_the_open_board_before_the_message() {
-        let a = build_args("agrega una tabla", &[], None, None, Some("Plan.canvas"));
+        let a = build_args("agrega una tabla", &[], None, None, Some("Plan.canvas"), None);
         assert_eq!(a.last().unwrap(), "Pizarra abierta: Plan.canvas\n\nagrega una tabla");
         let n = a.len();
         assert_eq!(a[n - 2], "--");
         // Every flag is still there.
-        let without = build_args("agrega una tabla", &[], None, None, None);
+        let without = build_args("agrega una tabla", &[], None, None, None, None);
         assert_eq!(a[..n - 1], without[..without.len() - 1]);
     }
 
     #[test]
     fn build_args_without_board_is_unchanged() {
-        let a = build_args("hola", &[], None, None, None);
+        let a = build_args("hola", &[], None, None, None, None);
         assert_eq!(a.last().unwrap(), "hola");
         assert!(!a.last().unwrap().contains("Pizarra abierta"));
     }
 
     #[test]
     fn build_args_board_and_attachments_compose() {
-        let a = build_args("mira", &["adjuntos/a.png".into()], Some("s1"), Some("opus"), Some("sub/Plan.canvas"));
+        let a = build_args("mira", &["adjuntos/a.png".into()], Some("s1"), Some("opus"), Some("sub/Plan.canvas"), None);
         assert_eq!(
             a.last().unwrap(),
             "Pizarra abierta: sub/Plan.canvas\n\nmira\n\nArchivos adjuntos (léelos con Read):\n- adjuntos/a.png"
@@ -537,17 +545,30 @@ mod tests {
     #[test]
     fn build_args_board_name_is_passed_verbatim() {
         let name = r#"Mi "plan" (v2) $HOME;x.canvas"#;
-        let a = build_args("hola", &[], None, None, Some(name));
+        let a = build_args("hola", &[], None, None, Some(name), None);
         assert_eq!(a.last().unwrap(), &format!("Pizarra abierta: {name}\n\nhola"));
         // A board name that looks like a flag still sits behind `--`.
-        let b = build_args("hola", &[], None, None, Some("--version"));
+        let b = build_args("hola", &[], None, None, Some("--version"), None);
         assert_eq!(b[b.len() - 2], "--");
         assert_eq!(b.last().unwrap(), "Pizarra abierta: --version\n\nhola");
     }
 
     #[test]
+    fn build_args_memory_dir_goes_in_settings_before_separator() {
+        for path in ["/Users/d/.claude/projects/x/memory", "/Users/d/.claude/projects/a \"b\" Ñ/memory"] {
+            let a = build_args("hola", &[], Some("s1"), Some("opus"), None, Some(Path::new(path)));
+            let i = a.iter().position(|x| x == "--settings").expect("--settings");
+            let v: serde_json::Value = serde_json::from_str(&a[i + 1]).unwrap();
+            assert_eq!(v["autoMemoryDirectory"], path);
+            assert!(i + 1 < a.len() - 2);
+            assert_eq!(&a[a.len() - 2..], ["--", "hola"]);
+        }
+        assert!(!build_args("hola", &[], None, None, None, None).iter().any(|x| x == "--settings"));
+    }
+
+    #[test]
     fn build_args_prompt_starting_with_dash_is_safe() {
-        let a = build_args("--version", &[], None, None, None);
+        let a = build_args("--version", &[], None, None, None, None);
         assert_eq!(&a[a.len() - 2..], ["--", "--version"]);
     }
 
